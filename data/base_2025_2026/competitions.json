@@ -1,0 +1,24 @@
+{
+  "leagues": [
+    { "id":"BRA_SERIE_A", "name":"Brasileirão Série A", "region":"South America", "country":"BRA", "tier":1, "type":"league" },
+    { "id":"BRA_SERIE_B", "name":"Brasileirão Série B", "region":"South America", "country":"BRA", "tier":2, "type":"league" },
+
+    { "id":"ARG_PRIMERA", "name":"Argentina Primera División", "region":"South America", "country":"ARG", "tier":1, "type":"league" },
+    { "id":"URU_PRIMERA", "name":"Uruguai Primera División", "region":"South America", "country":"URU", "tier":1, "type":"league" },
+    { "id":"CHI_PRIMERA", "name":"Chile Primera División", "region":"South America", "country":"CHI", "tier":1, "type":"league" },
+    { "id":"COL_PRIMERA", "name":"Colômbia Primera A", "region":"South America", "country":"COL", "tier":1, "type":"league" },
+
+    { "id":"ENG_EPL", "name":"Premier League", "region":"Europe", "country":"ENG", "tier":1, "type":"league" },
+    { "id":"ESP_LALIGA", "name":"LaLiga", "region":"Europe", "country":"ESP", "tier":1, "type":"league" },
+    { "id":"ITA_SERIE_A", "name":"Serie A (Itália)", "region":"Europe", "country":"ITA", "tier":1, "type":"league" },
+    { "id":"GER_BUND", "name":"Bundesliga", "region":"Europe", "country":"GER", "tier":1, "type":"league" },
+    { "id":"FRA_L1", "name":"Ligue 1", "region":"Europe", "country":"FRA", "tier":1, "type":"league" },
+    { "id":"POR_LIGA", "name":"Liga Portugal", "region":"Europe", "country":"POR", "tier":1, "type":"league" },
+    { "id":"NED_ERE", "name":"Eredivisie", "region":"Europe", "country":"NED", "tier":1, "type":"league" }
+  ],
+  "cups": [
+    { "id":"BRA_CDB", "name":"Copa do Brasil", "region":"South America", "country":"BRA", "type":"cup", "format":"knockout" },
+    { "id":"CONM_LIB", "name":"Libertadores (placeholder)", "region":"South America", "type":"continental", "format":"groups+knockout" },
+    { "id":"UEFA_UCL", "name":"Champions League (placeholder)", "region":"Europe", "type":"continental", "format":"league+knockout" }
+  ]
+}
