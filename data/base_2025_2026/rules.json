@@ -1,0 +1,13 @@
+{
+  "leagueRules": {
+    "pointsWin": 3,
+    "pointsDraw": 1,
+    "pointsLoss": 0,
+    "tieBreakers": ["points", "wins", "goalDiff", "goalsFor", "headToHead", "fairPlay"]
+  },
+  "brazilSerieA": {
+    "relegationSpots": 4,
+    "libertadoresSpots": 6,
+    "sudamericanaSpots": 6
+  }
+}
