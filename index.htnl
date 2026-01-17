@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vale Futebol Manager 2026</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo-badge">VFM</div>
+          <div class="brand-text">
+            <div class="brand-title">Vale Futebol Manager 2026</div>
+            <div class="brand-subtitle">Carreira • Dados (JSON/DLC) • Admin</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="btnGoHome" class="btn btn-ghost" type="button" title="Voltar ao início">Início</button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div id="view" class="view">
+          <!-- Router injeta aqui -->
+        </div>
+      </main>
+
+      <footer class="footer">
+        <span>© Vale Futebol Manager 2026</span>
+        <span class="dot">•</span>
+        <span>Offline • LocalStorage</span>
+      </footer>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
