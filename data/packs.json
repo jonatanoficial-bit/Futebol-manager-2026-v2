@@ -1,11 +1,11 @@
 {
   "packs": [
     {
-      "id": "base_2025_2026",
+      "id": "base_2025",
       "name": "Base 2025/2026",
       "version": "1.0.0",
-      "path": "./data/base_2025_2026/manifest.json",
-      "description": "Pacote base inicial. (Na Parte 2 entra clubes/jogadores/competições completos.)"
+      "description": "Brasil (Série A/B) + principais ligas da América do Sul e Europa (estrutura pronta).",
+      "path": "./data/base_2025/manifest.json"
     }
   ]
 }
