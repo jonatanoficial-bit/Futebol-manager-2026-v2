@@ -194,6 +194,7 @@ body{
 .item-left{ min-width: 0; }
 .item-right{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 .small{ font-size:12px; color:var(--muted); }
+
 .club-logo{
   width:42px; height:42px;
   border-radius:14px;
@@ -216,6 +217,7 @@ body{
   color: var(--text);
   font-size:12px;
 }
+
 /* --- Parte 4: pequenos componentes --- */
 .pill{
   display:inline-flex; align-items:center; gap:8px;
