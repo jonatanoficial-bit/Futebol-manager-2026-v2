@@ -1,49 +1,30 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vale Futebol Manager 2026 - Premium</title>
-  <!-- Estilos principais -->
-  <link rel="stylesheet" href="./styles.css" />
-</head>
+
+<!DOCTYPE html>
+<html>
+<head><link rel="stylesheet" href="css/styles.css"></head>
 <body>
-  <!-- Tela de abertura com logo da produtora -->
-  <div class="splash" id="splash">
-    <div class="splash-logo">
-      <img src="./assets/images/vale_games_logo.png" alt="Vale Games" />
-    </div>
-  </div>
+<h2>Vale Futebol Manager</h2>
 
-  <!-- Estrutura principal da aplicação -->
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="logo-badge">VFM</div>
-        <div class="brand-text">
-          <div class="brand-title">Vale Futebol Manager 2026</div>
-          <div class="brand-subtitle">Carreira • Dados • Admin</div>
-        </div>
-      </div>
-      <div class="topbar-actions">
-        <button class="btn btn-ghost" type="button" onclick="location.hash='#/home'">
-          Início
-        </button>
-      </div>
-    </header>
-    <main class="main">
-      <div id="view" class="view">
-        <!-- O conteúdo será renderizado dinamicamente pelo app.js -->
-      </div>
-    </main>
-    <footer class="footer">
-      <span>© Vale Games</span>
-      <span class="dot">•</span>
-      <span>Offline • LocalStorage</span>
-    </footer>
-  </div>
+<div class="section">
+<h3>Escolha seu clube</h3>
+<button onclick="pickClub('santos')">Santos</button>
+<button onclick="pickClub('palmeiras')">Palmeiras</button>
+<button onclick="pickClub('river')">River Plate</button>
+<button onclick="pickClub('real')">Real Madrid</button>
+</div>
 
-  <!-- Lógica principal da aplicação -->
-  <script src="./app.js"></script>
+<div id="hub" class="section" style="display:none">
+<h3>HUB</h3>
+<button onclick="playRound()">Jogar rodada</button>
+<button onclick="playWorldCup()">Mundial de Clubes</button>
+<span class="badge">Carreira Ativa</span>
+</div>
+
+<div class="section">
+<h3>Eventos</h3>
+<div id="log"></div>
+</div>
+
+<script src="js/app.js"></script>
 </body>
 </html>
