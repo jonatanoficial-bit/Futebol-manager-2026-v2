@@ -272,6 +272,9 @@
     "/squad": viewSquad,
     "/tactics": viewTactics,
     "/training": viewTraining,
+    "/matches": viewMatches,
+    "/competitions": viewCompetitions,
+    "/finance": viewFinance,
     "/save": viewSave,
     "/admin": viewAdmin,
     "/staff": viewStaff,
@@ -808,6 +811,11 @@
               <div class="col-4"><button class="btn btn-primary" data-go="/squad">Elenco</button></div>
               <div class="col-4"><button class="btn btn-primary" data-go="/tactics">Tática</button></div>
               <div class="col-4"><button class="btn btn-primary" data-go="/training">Treinos</button></div>
+
+            <div class="col-4"><button class="btn btn-primary" data-go="/matches">Jogos (Calendário)</button></div>
+            <div class="col-4"><button class="btn btn-primary" data-go="/competitions">Competições</button></div>
+            <div class="col-4"><button class="btn btn-primary" data-go="/finance">Finanças</button></div>
+
               <div class="col-4"><button class="btn btn-primary" data-go="/staff">Staff</button></div>
               <div class="col-4"><button class="btn btn-primary" data-go="/sponsorship">Patrocínio</button></div>
               <div class="col-4"><button class="btn btn-primary" data-go="/transfers">Transferências</button></div>
@@ -975,6 +983,273 @@
               <button class="btn btn-primary" data-go="/hub">Voltar</button>
               <button class="btn" data-go="/squad">Ver Elenco</button>
             </div>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  // -----------------------------
+  // Temporada / Jogos (Liga)
+  // -----------------------------
+
+  function ensureSeason(save) {
+    if (!save.season) save.season = {};
+    if (save.season.id && save.season.leagueId && Array.isArray(save.season.rounds)) return;
+
+    const club = getClub(save.career.clubId);
+    const leagueId = club?.leagueId || 'BRA_SERIE_A';
+    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === leagueId);
+    const clubIds = clubs.map(c => c.id);
+    const rounds = generateDoubleRoundRobin(clubIds);
+    const table = buildEmptyTable(clubs);
+
+    save.season = {
+      id: (state.packData?.seasons?.seasons || []).find(s => s.default)?.id || '2025_2026',
+      leagueId,
+      currentRound: 0,
+      rounds,
+      table
+    };
+  }
+
+  function generateDoubleRoundRobin(teamIds) {
+    // Circle method (single round)
+    const teams = [...teamIds];
+    if (teams.length % 2 === 1) teams.push('__BYE__');
+    const n = teams.length;
+    const half = n / 2;
+    const rounds = [];
+    let arr = teams.slice();
+    for (let r = 0; r < n - 1; r++) {
+      const matches = [];
+      for (let i = 0; i < half; i++) {
+        const home = arr[i];
+        const away = arr[n - 1 - i];
+        if (home !== '__BYE__' && away !== '__BYE__') {
+          matches.push({ homeId: home, awayId: away, played: false, hg: 0, ag: 0 });
+        }
+      }
+      rounds.push(matches);
+      // rotate
+      const fixed = arr[0];
+      const rest = arr.slice(1);
+      rest.unshift(rest.pop());
+      arr = [fixed, ...rest];
+    }
+    // Second round: swap home/away
+    const second = rounds.map(matches => matches.map(m => ({ homeId: m.awayId, awayId: m.homeId, played: false, hg: 0, ag: 0 })));
+    return [...rounds, ...second];
+  }
+
+  function buildEmptyTable(clubs) {
+    const table = {};
+    clubs.forEach(c => {
+      table[c.id] = { id: c.id, name: c.name, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0 };
+    });
+    return table;
+  }
+
+  function sortTableRows(rows) {
+    return rows.sort((a, b) => {
+      if (b.Pts !== a.Pts) return b.Pts - a.Pts;
+      if (b.GD !== a.GD) return b.GD - a.GD;
+      if (b.GF !== a.GF) return b.GF - a.GF;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  function teamStrength(clubId, save) {
+    const club = getClub(clubId);
+    let base = Number(club?.overall || 60);
+    // Usa forma real apenas para o clube do usuário (para manter leve)
+    if (clubId === save.career.clubId && Array.isArray(save.squad?.players)) {
+      const formAvg = save.squad.players.reduce((s, p) => s + (p.form || 0), 0) / Math.max(1, save.squad.players.length);
+      base += formAvg;
+    } else {
+      base += (Math.random() * 2 - 1); // pequena variação
+    }
+    return base;
+  }
+
+  function simulateMatch(homeId, awayId, save) {
+    const h = teamStrength(homeId, save);
+    const a = teamStrength(awayId, save);
+    const advantage = 1.5;
+    const diff = (h + advantage) - a;
+    const baseGoals = 1.1;
+    const hg = clampInt(Math.round(randNormal(baseGoals + diff / 18, 0.9)), 0, 6);
+    const ag = clampInt(Math.round(randNormal(baseGoals - diff / 22, 0.9)), 0, 6);
+    return { hg, ag };
+  }
+
+  function randNormal(mean, std) {
+    // Box-Muller
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    return mean + z * std;
+  }
+
+  function clampInt(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function applyResultToTable(table, homeId, awayId, hg, ag) {
+    const home = table[homeId];
+    const away = table[awayId];
+    if (!home || !away) return;
+    home.P += 1; away.P += 1;
+    home.GF += hg; home.GA += ag;
+    away.GF += ag; away.GA += hg;
+    home.GD = home.GF - home.GA;
+    away.GD = away.GF - away.GA;
+    if (hg > ag) { home.W += 1; home.Pts += 3; away.L += 1; }
+    else if (hg < ag) { away.W += 1; away.Pts += 3; home.L += 1; }
+    else { home.D += 1; away.D += 1; home.Pts += 1; away.Pts += 1; }
+  }
+
+  function viewMatches() {
+    return requireSave((save) => {
+      ensureSystems(save);
+      ensureSeason(save);
+      const club = getClub(save.career.clubId);
+      const league = (state.packData?.competitions?.leagues || []).find(l => l.id === save.season.leagueId);
+      const totalRounds = save.season.rounds.length;
+      const r = save.season.currentRound;
+
+      const rows = sortTableRows(Object.values(save.season.table));
+      const userPos = rows.findIndex(x => x.id === save.career.clubId) + 1;
+
+      const roundMatches = save.season.rounds[r] || [];
+      const myGame = roundMatches.find(m => m.homeId === save.career.clubId || m.awayId === save.career.clubId) || null;
+
+      function matchLine(m) {
+        const h = getClub(m.homeId)?.short || getClub(m.homeId)?.name || m.homeId;
+        const a = getClub(m.awayId)?.short || getClub(m.awayId)?.name || m.awayId;
+        const score = m.played ? `<b>${m.hg} x ${m.ag}</b>` : `<span class="badge">Não jogado</span>`;
+        return `<div class="item"><div class="item-left"><div class="item-title">${esc(h)} vs ${esc(a)}</div><div class="item-sub">Rodada ${r+1}/${totalRounds}</div></div><div class="item-right">${score}</div></div>`;
+      }
+
+      const list = roundMatches.length ? roundMatches.map(matchLine).join('') : `<div class="notice">Temporada encerrada.</div>`;
+
+      writeSlot(state.settings.activeSlotId, save);
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Jogos e Calendário</div>
+              <div class="card-subtitle">${esc(league?.name || save.season.leagueId)} • ${esc(club?.name || '')} • Posição atual: <b>${userPos || '-'}</b></div>
+            </div>
+            <span class="badge">Rodada ${Math.min(r+1, totalRounds)}/${totalRounds}</span>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <button class="btn btn-primary" data-action="playNextRound" ${r >= totalRounds ? 'disabled' : ''}>Jogar Próxima Rodada</button>
+              <button class="btn" data-go="/competitions">Ver Tabela</button>
+              <button class="btn" data-go="/hub">Voltar</button>
+            </div>
+            <div class="sep"></div>
+            <div class="list">
+              ${list}
+            </div>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  function viewCompetitions() {
+    return requireSave((save) => {
+      ensureSystems(save);
+      ensureSeason(save);
+      const club = getClub(save.career.clubId);
+      const league = (state.packData?.competitions?.leagues || []).find(l => l.id === save.season.leagueId);
+      const rows = sortTableRows(Object.values(save.season.table));
+
+      const tableHtml = rows.map((t, idx) => {
+        const mark = t.id === save.career.clubId ? ' style="outline:1px solid rgba(34,197,94,.45)"' : '';
+        return `
+          <tr${mark}>
+            <td>${idx+1}</td>
+            <td>${esc(t.name)}</td>
+            <td class="right">${t.P}</td>
+            <td class="right">${t.W}</td>
+            <td class="right">${t.D}</td>
+            <td class="right">${t.L}</td>
+            <td class="right">${t.GF}</td>
+            <td class="right">${t.GA}</td>
+            <td class="right">${t.GD}</td>
+            <td class="right"><b>${t.Pts}</b></td>
+          </tr>
+        `;
+      }).join('');
+
+      writeSlot(state.settings.activeSlotId, save);
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Competições</div>
+              <div class="card-subtitle">Tabela da liga • ${esc(league?.name || save.season.leagueId)} • ${esc(club?.name || '')}</div>
+            </div>
+            <span class="badge">Rodada ${save.season.currentRound+1}</span>
+          </div>
+          <div class="card-body">
+            <div class="notice">MVP: nesta versão, a temporada jogável é a Liga (tabela completa). Copas/continentais entram na próxima atualização.</div>
+            <div class="sep"></div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>#</th><th>Clube</th><th class="right">J</th><th class="right">V</th><th class="right">E</th><th class="right">D</th>
+                  <th class="right">GP</th><th class="right">GC</th><th class="right">SG</th><th class="right">Pts</th>
+                </tr>
+              </thead>
+              <tbody>${tableHtml}</tbody>
+            </table>
+            <div class="sep"></div>
+            <div class="row">
+              <button class="btn btn-primary" data-go="/matches">Voltar aos Jogos</button>
+              <button class="btn" data-go="/hub">HUB</button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  function viewFinance() {
+    return requireSave((save) => {
+      ensureSystems(save);
+      const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
+      const cash = save.finance?.cash || 0;
+      const sponsor = save.sponsorship?.current;
+      const staffCost = (save.staff?.hired || []).reduce((s, st) => s + (st.salary || 0), 0);
+      const sponsorWeekly = sponsor?.weekly || 0;
+      const sponsorName = sponsor?.name || 'Nenhum';
+      writeSlot(state.settings.activeSlotId, save);
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Finanças</div>
+              <div class="card-subtitle">Resumo do clube • receitas e custos</div>
+            </div>
+            <span class="badge">Caixa: ${cash.toLocaleString('pt-BR', { style: 'currency', currency })}</span>
+          </div>
+          <div class="card-body">
+            <div class="kv"><span>Patrocínio atual</span><b>${esc(sponsorName)}</b></div>
+            <div style="height:10px"></div>
+            <div class="kv"><span>Receita semanal (patrocínio)</span><b>${sponsorWeekly.toLocaleString('pt-BR', { style: 'currency', currency })}</b></div>
+            <div style="height:10px"></div>
+            <div class="kv"><span>Custo semanal (staff)</span><b>${staffCost.toLocaleString('pt-BR', { style: 'currency', currency })}</b></div>
+            <div class="sep"></div>
+            <div class="notice">Receitas e custos semanais são aplicados automaticamente quando você usa <b>Treinos</b> (Aplicar) ou joga uma <b>Rodada</b> no calendário.</div>
+            <div class="sep"></div>
+            <button class="btn btn-primary" data-go="/hub">Voltar</button>
           </div>
         </div>
       `;
@@ -1381,6 +1656,148 @@
           save.meta.updatedAt = nowIso();
           writeSlot(state.settings.activeSlotId, save);
           alert(`Treino ${plan} aplicado! Bônus total: ${boost.toFixed(2)}. Receita ${sponsorIncome.toLocaleString('pt-BR', { style: 'currency', currency: state.packData?.rules?.gameRules?.currency || 'BRL' })}, despesas ${weeklyCost.toLocaleString('pt-BR', { style: 'currency', currency: state.packData?.rules?.gameRules?.currency || 'BRL' })}.`);
+          route();
+        });
+      }
+
+      // --- Staff
+      if (action === 'hireStaff') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          const staffId = el.getAttribute('data-staff');
+          const st = STAFF_CATALOG.find(s => s.id === staffId);
+          if (!st) return;
+          // contrata se não existir
+          const hired = save.staff.hired || [];
+          if (hired.find(x => x.id === st.id)) return;
+          hired.push({ ...st });
+          save.staff.hired = hired;
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+      if (action === 'fireStaff') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          const staffId = el.getAttribute('data-staff');
+          save.staff.hired = (save.staff.hired || []).filter(x => x.id !== staffId);
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+
+      // --- Patrocínio
+      if (action === 'signSponsor') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          const sponsorId = el.getAttribute('data-sponsor');
+          const sp = SPONSOR_CATALOG.find(s => s.id === sponsorId);
+          if (!sp) return;
+          save.sponsorship.current = { ...sp };
+          // aplica aporte inicial
+          if (!save.finance) save.finance = { cash: 0 };
+          save.finance.cash = (save.finance.cash || 0) + (sp.cashUpfront || 0);
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+      if (action === 'cancelSponsor') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          save.sponsorship.current = null;
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+
+      // --- Transferências
+      if (action === 'transferSearchInput') {
+        el.addEventListener('input', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          save.transfers.search = el.value || '';
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+      if (action === 'transferFilterPos') {
+        el.addEventListener('change', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          save.transfers.filterPos = el.value || 'ALL';
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+      if (action === 'buyPlayer') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          const pid = el.getAttribute('data-pid');
+          const p = (state.packData?.players?.players || []).find(x => x.id === pid);
+          if (!p) return;
+          const price = Number(p.value || 0);
+          if (!save.finance) save.finance = { cash: 0 };
+          if ((save.finance.cash || 0) < price) return;
+          save.finance.cash = (save.finance.cash || 0) - price;
+          save.squad.players.push({ ...p, clubId: save.career.clubId, source: 'transfer' });
+          if (!save.transfers.bought) save.transfers.bought = [];
+          save.transfers.bought.push(pid);
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+
+      // --- Jogos
+      if (action === 'playNextRound') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          ensureSeason(save);
+          const r = save.season.currentRound;
+          const rounds = save.season.rounds || [];
+          if (r >= rounds.length) return;
+
+          const matches = rounds[r];
+          matches.forEach(m => {
+            if (m.played) return;
+            const { hg, ag } = simulateMatch(m.homeId, m.awayId, save);
+            m.hg = hg; m.ag = ag; m.played = true;
+            applyResultToTable(save.season.table, m.homeId, m.awayId, hg, ag);
+          });
+
+          // receitas/ custos semanais ao jogar uma rodada
+          const econ = state.packData?.rules?.economy || {};
+          let weeklyCost = 0;
+          weeklyCost += econ?.weeklyCosts?.staff || 0;
+          weeklyCost += econ?.weeklyCosts?.maintenance || 0;
+          weeklyCost += (save.staff?.hired || []).reduce((s, st) => s + (st.salary || 0), 0);
+          const sponsorIncome = save.sponsorship?.current?.weekly || 0;
+          if (!save.finance) save.finance = { cash: 0 };
+          save.finance.cash = Math.max(0, (save.finance.cash || 0) + sponsorIncome - weeklyCost);
+
+          save.season.currentRound += 1;
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
           route();
         });
       }
