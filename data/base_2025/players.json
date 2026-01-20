@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "packId": "base_2025",
+    "generatedAt": "2026-01-17T00:00:00Z",
+    "note": "Elencos genéricos para todos os clubes. Cada equipe utilizará este template caso não exista elenco específico."
+  },
+  "template": {
+    "squadSize": 25,
+    "positions": {
+      "GK": 3,
+      "DEF": 8,
+      "MID": 9,
+      "ATT": 5
+    },
+    "names": {
+      "first": ["Joao","Pedro","Lucas","Mateus","Gabriel","Rafael","Bruno","Diego","Vitor","Caio","Renan","Andre","Thiago","Henrique","Arthur","Marcos","Felipe","Danilo","Gustavo","Leo"],
+      "last": ["Silva","Souza","Santos","Oliveira","Pereira","Lima","Costa","Ribeiro","Carvalho","Almeida","Gomes","Rocha","Martins","Barbosa","Ferreira","Mendes","Araujo","Cardoso","Teixeira","Moura"]
+    },
+    "overallByTier": {
+      "BRA_SERIE_A": { "min": 62, "max": 78 },
+      "BRA_SERIE_B": { "min": 58, "max": 72 },
+      "default": { "min": 60, "max": 74 }
+    },
+    "age": { "min": 17, "max": 35 },
+    "value": {
+      "baseMultiplier": 900000,
+      "youngBonusMultiplier": 1.2
+    },
+    "form": { "min": -2, "max": 2 }
+  },
+  "players": [
+    {
+      "id": "GENERIC_SQUAD_TEMPLATE",
+      "clubId": "__ANY__",
+      "source": "template",
+      "note": "Item placeholder indicando que o jogo gera jogadores a partir do template para cada clube que não possui elenco específico."
+    },
+    { "id": "generic_gk_01", "clubId": "__ANY__", "name": "Joao Silva",    "pos": "GK",  "age": 28, "overall": 68, "value": 61200000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_gk_02", "clubId": "__ANY__", "name": "Pedro Santos",  "pos": "GK",  "age": 22, "overall": 66, "value": 71280000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_gk_03", "clubId": "__ANY__", "name": "Lucas Oliveira", "pos": "GK",  "age": 31, "overall": 65, "value": 58500000, "nationality": null, "form": -1, "source": "generic" },
+    { "id": "generic_def_01", "clubId": "__ANY__", "name": "Mateus Pereira",    "pos": "DEF", "age": 26, "overall": 67, "value": 60300000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_def_02", "clubId": "__ANY__", "name": "Gabriel Costa",     "pos": "DEF", "age": 23, "overall": 66, "value": 71280000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_def_03", "clubId": "__ANY__", "name": "Rafael Ribeiro",     "pos": "DEF", "age": 29, "overall": 65, "value": 58500000, "nationality": null, "form": -1, "source": "generic" },
+    { "id": "generic_def_04", "clubId": "__ANY__", "name": "Bruno Carvalho",    "pos": "DEF", "age": 24, "overall": 67, "value": 72360000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_def_05", "clubId": "__ANY__", "name": "Diego Almeida",     "pos": "DEF", "age": 20, "overall": 64, "value": 69120000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_def_06", "clubId": "__ANY__", "name": "Vitor Gomes",       "pos": "DEF", "age": 32, "overall": 64, "value": 57600000, "nationality": null, "form": -1, "source": "generic" },
+    { "id": "generic_def_07", "clubId": "__ANY__", "name": "Caio Rocha",         "pos": "DEF", "age": 27, "overall": 66, "value": 59400000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_def_08", "clubId": "__ANY__", "name": "Renan Martins",      "pos": "DEF", "age": 21, "overall": 65, "value": 70200000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_mid_01", "clubId": "__ANY__", "name": "Andre Barbosa",      "pos": "MID", "age": 25, "overall": 68, "value": 61200000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_mid_02", "clubId": "__ANY__", "name": "Thiago Ferreira",    "pos": "MID", "age": 22, "overall": 67, "value": 72360000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_mid_03", "clubId": "__ANY__", "name": "Henrique Mendes",    "pos": "MID", "age": 30, "overall": 66, "value": 59400000, "nationality": null, "form": -1, "source": "generic" },
+    { "id": "generic_mid_04", "clubId": "__ANY__", "name": "Arthur Araujo",      "pos": "MID", "age": 19, "overall": 63, "value": 68040000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_mid_05", "clubId": "__ANY__", "name": "Marcos Cardoso",     "pos": "MID", "age": 27, "overall": 67, "value": 60300000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_mid_06", "clubId": "__ANY__", "name": "Felipe Teixeira",    "pos": "MID", "age": 33, "overall": 64, "value": 57600000, "nationality": null, "form": -1, "source": "generic" },
+    { "id": "generic_mid_07", "clubId": "__ANY__", "name": "Danilo Moura",       "pos": "MID", "age": 24, "overall": 66, "value": 71280000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_mid_08", "clubId": "__ANY__", "name": "Gustavo Silva",      "pos": "MID", "age": 21, "overall": 65, "value": 70200000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_mid_09", "clubId": "__ANY__", "name": "Leo Santos",         "pos": "MID", "age": 28, "overall": 66, "value": 59400000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_att_01", "clubId": "__ANY__", "name": "Joao Costa",         "pos": "ATT", "age": 23, "overall": 69, "value": 74520000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_att_02", "clubId": "__ANY__", "name": "Pedro Ribeiro",      "pos": "ATT", "age": 27, "overall": 68, "value": 61200000, "nationality": null, "form": 0,  "source": "generic" },
+    { "id": "generic_att_03", "clubId": "__ANY__", "name": "Lucas Carvalho",     "pos": "ATT", "age": 31, "overall": 66, "value": 59400000, "nationality": null, "form": -1, "source": "generic" },
+    { "id": "generic_att_04", "clubId": "__ANY__", "name": "Mateus Almeida",     "pos": "ATT", "age": 19, "overall": 64, "value": 69120000, "nationality": null, "form": 1,  "source": "generic" },
+    { "id": "generic_att_05", "clubId": "__ANY__", "name": "Gabriel Gomes",      "pos": "ATT", "age": 25, "overall": 67, "value": 60300000, "nationality": null, "form": 0,  "source": "generic" }
+  ]
+}

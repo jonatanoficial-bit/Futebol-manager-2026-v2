@@ -3,56 +3,47 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vale Futebol Manager 2026</title>
+  <title>Vale Futebol Manager 2026 - Premium</title>
+  <!-- Estilos principais -->
   <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
-  <div class="app-shell">
+  <!-- Tela de abertura com logo da produtora -->
+  <div class="splash" id="splash">
+    <div class="splash-logo">
+      <img src="./assets/images/vale_games_logo.png" alt="Vale Games" />
+    </div>
+  </div>
 
+  <!-- Estrutura principal da aplicação -->
+  <div class="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="logo-badge">VFM</div>
         <div class="brand-text">
           <div class="brand-title">Vale Futebol Manager 2026</div>
-          <div class="brand-subtitle">Carreira • Dados (JSON/DLC) • Admin</div>
+          <div class="brand-subtitle">Carreira • Dados • Admin</div>
         </div>
       </div>
-
       <div class="topbar-actions">
         <button class="btn btn-ghost" type="button" onclick="location.hash='#/home'">
           Início
         </button>
       </div>
     </header>
-
     <main class="main">
       <div id="view" class="view">
-        <!-- O app.js renderiza tudo aqui -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Carregando...</div>
-              <div class="card-subtitle">Se essa mensagem ficar, verifique se app.js está carregando.</div>
-            </div>
-          </div>
-          <div class="card-body">
-            <div class="notice">
-              Iniciando Vale Futebol Manager 2026...
-            </div>
-          </div>
-        </div>
+        <!-- O conteúdo será renderizado dinamicamente pelo app.js -->
       </div>
     </main>
-
     <footer class="footer">
-      <span>© Vale Futebol Manager 2026</span>
+      <span>© Vale Games</span>
       <span class="dot">•</span>
       <span>Offline • LocalStorage</span>
     </footer>
-
   </div>
 
+  <!-- Lógica principal da aplicação -->
   <script src="./app.js"></script>
 </body>
 </html>
