@@ -94,5 +94,14 @@
       "INTERCLUBES": { "winner": 15000000 }
     },
     "notes": "Valores aproximados para recompensa."
+  },
+  "parameters": {
+    "ENABLE_STATE_CHAMPIONSHIPS_BR": false,
+    "BRAZIL_LIBERTADORES_SLOTS_BY_LEAGUE": 6,
+    "BRAZIL_CUP_EXTRA_SLOTS": 1,
+    "UEFA_EXTRA_CHAMPIONS_LEAGUE_SLOT_BY_COEFFICIENT": false,
+    "INTERCONTINENTAL_MODE": "CLASSIC",
+    "CLUB_WORLD_CUP_ENABLED": true,
+    "notes": "Parâmetros configuráveis para o desenvolvedor. Você pode ajustar esses valores sem quebrar as regras principais."
   }
 }

@@ -39,11 +39,87 @@
     return new Date().toISOString();
   }
 
+  /**
+   * Resolve uma URL relativa para o caminho correto de deploy.
+   * Alguns navegadores (como GitHub Pages) servem a aplicação a partir de uma
+   * subpasta (ex.: /MeuRepo/), o que quebra fetch('./data/...').
+   * Este helper utiliza o objeto URL para resolver o caminho com base no
+   * endereço atual da página. Caso o parâmetro já seja uma URL absoluta,
+   * retorna-o sem alterações.
+   * @param {string} rel Caminho relativo ou URL.
+   */
+  function urlOf(rel) {
+    try {
+      // Se for absoluta, retorna como está
+      if (/^https?:\/\//.test(rel)) return rel;
+      // Remove hashes e queries da URL atual
+      const base = window.location.href.split("?#")[0].split("?")[0];
+      return new URL(rel.replace(/^\.\/?/, ""), base).href;
+    } catch (e) {
+      return rel;
+    }
+  }
+
   /** Chaves de LocalStorage */
   const LS = {
     SETTINGS: "vfm26_settings",
     SLOT_PREFIX: "vfm26_slot_"
   };
+
+  /**
+   * Catálogos de staff e patrocinadores
+   * Cada staff possui um efeito aplicado no treino (trainingBoost ou formBoostMultiplier)
+   * e um salário semanal. Os patrocinadores oferecem dinheiro inicial e
+   * pagamentos semanais. Esses catálogos podem ser expandidos futuramente ou
+   * carregados de um JSON externo.
+   */
+  const STAFF_CATALOG = [
+    {
+      id: "assistant_coach",
+      name: "Assistente Técnico",
+      effect: { trainingBoost: 0.1 },
+      salary: 500000,
+      description: "Aumenta ligeiramente o efeito de qualquer plano de treino."
+    },
+    {
+      id: "fitness_coach",
+      name: "Preparador Físico",
+      effect: { formBoostMultiplier: 1.2 },
+      salary: 400000,
+      description: "Multiplica o bônus do treino, mantendo os atletas em melhor forma física."
+    },
+    {
+      id: "analyst",
+      name: "Analista de Desempenho",
+      effect: { trainingBoost: 0.05, formBoostMultiplier: 1.1 },
+      salary: 300000,
+      description: "Fornece dados para otimizar treinos e escalar melhor o time."
+    }
+  ];
+
+  const SPONSOR_CATALOG = [
+    {
+      id: "vale",
+      name: "Vale",
+      cashUpfront: 10000000,
+      weekly: 500000,
+      description: "A mineradora Vale oferece um bom aporte inicial e pagamentos constantes."
+    },
+    {
+      id: "regional_bank",
+      name: "Banco Regional",
+      cashUpfront: 5000000,
+      weekly: 300000,
+      description: "Patrocínio sólido de um banco local."
+    },
+    {
+      id: "energy_drink",
+      name: "Energy Drink",
+      cashUpfront: 2000000,
+      weekly: 100000,
+      description: "Empresa de bebidas energéticas oferecendo apoio modesto."
+    }
+  ];
 
   /**
    * Estado global da aplicação
@@ -133,7 +209,8 @@
   /** Carrega lista de pacotes de /data/packs.json */
   async function loadPacks() {
     try {
-      const res = await fetch("./data/packs.json", { cache: "no-store" });
+      // Usa urlOf para resolver o caminho do packs.json relativo ao local
+      const res = await fetch(urlOf("./data/packs.json"), { cache: "no-store" });
       const json = await res.json();
       state.packs = Array.isArray(json?.packs) ? json.packs : [];
     } catch {
@@ -155,12 +232,15 @@
       return;
     }
     try {
-      const manifest = await fetch(pack.path, { cache: "no-store" }).then((r) => r.json());
+      // Resolve caminho do manifest para URL completa (suporta deploy em subpasta)
+      const manifestUrl = urlOf(pack.path || "");
+      const manifest = await fetch(manifestUrl, { cache: "no-store" }).then((r) => r.json());
       const files = manifest.files || {};
       // Carrega cada arquivo, caindo para fallback se falhar
       async function tryLoad(path, fb) {
         try {
-          const r = await fetch(path, { cache: "no-store" });
+          const resolved = urlOf(path || "");
+          const r = await fetch(resolved, { cache: "no-store" });
           return await r.json();
         } catch {
           return fb;
@@ -193,7 +273,10 @@
     "/tactics": viewTactics,
     "/training": viewTraining,
     "/save": viewSave,
-    "/admin": viewAdmin
+    "/admin": viewAdmin,
+    "/staff": viewStaff,
+    "/sponsorship": viewSponsorship,
+    "/transfers": viewTransfers
   };
 
   /** Navega para a rota atual conforme hash */
@@ -343,6 +426,24 @@
     }
     if (!save.training.weekPlan) save.training.weekPlan = "Equilibrado";
     if (typeof save.training.formBoost !== "number") save.training.formBoost = 0;
+
+    // Inicializa sistemas adicionais: staff, patrocínio, finanças e filtros de transferência
+    if (!save.staff) save.staff = { hired: [] };
+    if (!save.sponsorship) save.sponsorship = { current: null };
+    if (!save.finance) {
+      // Valor inicial em caixa usando economy.defaultStartingCashIfMissing, se definido
+      let initialCash = 50000000;
+      try {
+        initialCash = state.packData?.rules?.economy?.defaultStartingCashIfMissing ?? 50000000;
+      } catch {}
+      save.finance = { cash: initialCash };
+    }
+    if (!save.transfers) save.transfers = { search: '', filterPos: 'ALL', bought: [] };
+    // garante que existam campos para busca, filtro e lista de jogadores comprados
+    if (typeof save.transfers.search !== 'string') save.transfers.search = '';
+    if (!save.transfers.filterPos) save.transfers.filterPos = 'ALL';
+    if (!Array.isArray(save.transfers.bought)) save.transfers.bought = [];
+
     return save;
   }
 
@@ -353,6 +454,25 @@
     if (selected.length === 0) return 0;
     const avg = selected.reduce((s, p) => s + p.overall, 0) / selected.length;
     return Math.round(avg);
+  }
+
+  /**
+   * Calcula o efeito total dos staff contratados no treino.
+   * Retorna um objeto com um bônus adicional (extra) e um multiplicador (multiplier).
+   */
+  function computeStaffTraining(save) {
+    const hired = (save.staff && Array.isArray(save.staff.hired)) ? save.staff.hired : [];
+    let extra = 0;
+    let multiplier = 1;
+    for (const st of hired) {
+      if (st.effect && typeof st.effect.trainingBoost === 'number') {
+        extra += st.effect.trainingBoost;
+      }
+      if (st.effect && typeof st.effect.formBoostMultiplier === 'number') {
+        multiplier *= st.effect.formBoostMultiplier;
+      }
+    }
+    return { extra, multiplier };
   }
 
   /* ========== VIEWS ========== */
@@ -629,7 +749,12 @@
   /** HUB do treinador */
   function viewHub() {
     return requireSave((save) => {
+      ensureSystems(save);
       const club = getClub(save.career.clubId);
+      // Format cash and current sponsor for display
+      const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
+      const cashStr = (save.finance?.cash || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+      const sponsorName = save.sponsorship?.current?.name || 'Nenhum';
       return `
         <div class="card">
           <div class="card-header">
@@ -637,20 +762,28 @@
               <div class="card-title">HUB do Treinador</div>
               <div class="card-subtitle">${esc(club?.name || '')} • Treinador: ${esc(save.career.coachName)}</div>
             </div>
-            <span class="badge">Temporada 2025/26</span>
+            <span class="badge">Caixa: ${cashStr}</span>
           </div>
           <div class="card-body">
+            <div class="kv">
+              <span class="small">Patrocínio</span>
+              <b>${esc(sponsorName)}</b>
+            </div>
+            <div class="sep"></div>
             <div class="grid">
               <div class="col-4"><button class="btn btn-primary" data-go="/squad">Elenco</button></div>
               <div class="col-4"><button class="btn btn-primary" data-go="/tactics">Tática</button></div>
               <div class="col-4"><button class="btn btn-primary" data-go="/training">Treinos</button></div>
+              <div class="col-4"><button class="btn btn-primary" data-go="/staff">Staff</button></div>
+              <div class="col-4"><button class="btn btn-primary" data-go="/sponsorship">Patrocínio</button></div>
+              <div class="col-4"><button class="btn btn-primary" data-go="/transfers">Transferências</button></div>
               <div class="col-4"><button class="btn" data-go="/save">Salvar</button></div>
               <div class="col-4"><button class="btn" data-go="/home">Menu</button></div>
               <div class="col-4"><button class="btn btn-danger" data-go="/slots">Trocar Slot</button></div>
             </div>
             <div class="sep"></div>
             <div class="notice">
-              Todas as seções já funcionam. Administre seu time e conquiste títulos!
+              Gerencie todos os aspectos do seu clube: elenco, tática, treinos, staff, patrocínio e transferências.
             </div>
           </div>
         </div>
@@ -831,6 +964,189 @@
     });
   }
 
+  /** Staff: contratação e demissão */
+  function viewStaff() {
+    return requireSave((save) => {
+      ensureSystems(save);
+      const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
+      const cashStr = (save.finance?.cash || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+      const hiredIds = new Set((save.staff?.hired || []).map((st) => st.id));
+      const rows = STAFF_CATALOG.map((st) => {
+        const isHired = hiredIds.has(st.id);
+        const salaryStr = (st.salary || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+        return `
+          <tr>
+            <td>${esc(st.name)}</td>
+            <td>${esc(st.description)}</td>
+            <td class="right">${salaryStr}</td>
+            <td class="center">
+              <button class="btn ${isHired ? 'btn-danger' : 'btn-primary'}" data-action="${isHired ? 'fireStaff' : 'hireStaff'}" data-staff="${esc(st.id)}">
+                ${isHired ? 'Demitir' : 'Contratar'}
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Staff</div>
+              <div class="card-subtitle">Gerencie sua equipe de suporte</div>
+            </div>
+            <span class="badge">Caixa: ${cashStr}</span>
+          </div>
+          <div class="card-body">
+            <table class="table">
+              <thead><tr><th>Staff</th><th>Descrição</th><th class="right">Salário</th><th class="center">Ação</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            <div class="sep"></div>
+            <button class="btn btn-primary" data-go="/hub">Voltar</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  /** Patrocínios: escolher e cancelar */
+  function viewSponsorship() {
+    return requireSave((save) => {
+      ensureSystems(save);
+      const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
+      const cashStr = (save.finance?.cash || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+      const current = save.sponsorship?.current || null;
+      // Se houver patrocinador atual, mostra dados e opção de cancelar
+      if (current) {
+        const upfrontStr = (current.cashUpfront || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+        const weeklyStr = (current.weekly || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Patrocínio Atual</div>
+                <div class="card-subtitle">${esc(current.name)}</div>
+              </div>
+              <span class="badge">Caixa: ${cashStr}</span>
+            </div>
+            <div class="card-body">
+              <div class="notice success">
+                Você recebe ${weeklyStr}/semana e já recebeu ${upfrontStr} de aporte inicial.
+              </div>
+              <div class="sep"></div>
+              <button class="btn btn-danger" data-action="cancelSponsor">Encerrar contrato</button>
+              <div class="sep"></div>
+              <button class="btn" data-go="/hub">Voltar</button>
+            </div>
+          </div>
+        `;
+      }
+      // Caso não haja patrocinador, lista opções disponíveis
+      const items = SPONSOR_CATALOG.map((sp) => {
+        const upfrontStr = (sp.cashUpfront || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+        const weeklyStr = (sp.weekly || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+        return `
+          <div class="item">
+            <div class="item-left">
+              <div class="item-title">${esc(sp.name)}</div>
+              <div class="item-sub">Aporte: ${upfrontStr} • Semanal: ${weeklyStr}</div>
+              <div class="small">${esc(sp.description)}</div>
+            </div>
+            <div class="item-right">
+              <button class="btn btn-primary" data-action="signSponsor" data-sponsor="${esc(sp.id)}">Assinar</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Patrocínios</div>
+              <div class="card-subtitle">Escolha um patrocinador</div>
+            </div>
+            <span class="badge">Caixa: ${cashStr}</span>
+          </div>
+          <div class="card-body">
+            <div class="list">${items}</div>
+            <div class="sep"></div>
+            <button class="btn" data-go="/hub">Voltar</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  /** Transferências: mercado de jogadores */
+  function viewTransfers() {
+    return requireSave((save) => {
+      ensureSystems(save);
+      const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
+      const cashStr = (save.finance?.cash || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+      const players = state.packData?.players?.players || [];
+      const ownedIds = new Set((save.squad?.players || []).map((p) => p.id));
+      const bought = new Set(save.transfers?.bought || []);
+      const q = save.transfers?.search || '';
+      const filterPos = save.transfers?.filterPos || 'ALL';
+      // Filtra jogadores não pertencentes ao clube nem já comprados
+      const filtered = players
+        .filter((p) => !ownedIds.has(p.id) && !bought.has(p.id))
+        .filter((p) => filterPos === 'ALL' ? true : p.pos === filterPos)
+        .filter((p) => {
+          if (!q.trim()) return true;
+          return p.name.toLowerCase().includes(q.trim().toLowerCase());
+        })
+        .sort((a, b) => b.overall - a.overall);
+      const posOpts = ['ALL', 'GK', 'DEF', 'MID', 'ATT'].map((p) => `<option value="${p}" ${p === filterPos ? 'selected' : ''}>${p === 'ALL' ? 'Todos' : p}</option>`).join('');
+      const rows = filtered.map((p) => {
+        const priceStr = (p.value || 0).toLocaleString('pt-BR', { style: 'currency', currency });
+        const affordable = (save.finance?.cash || 0) >= (p.value || 0);
+        return `
+          <tr>
+            <td>${esc(p.name)}</td>
+            <td class="center">${esc(p.pos)}</td>
+            <td class="center">${esc(p.age)}</td>
+            <td class="center">${esc(p.overall)}</td>
+            <td class="right">${priceStr}</td>
+            <td class="center">
+              <button class="btn btn-primary" data-action="buyPlayer" data-pid="${esc(p.id)}" ${affordable ? '' : 'disabled'}>Comprar</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Mercado de Transferências</div>
+              <div class="card-subtitle">Filtre e compre jogadores</div>
+            </div>
+            <span class="badge">Caixa: ${cashStr}</span>
+          </div>
+          <div class="card-body">
+            <div class="grid">
+              <div class="col-6">
+                <div class="label">Buscar jogador</div>
+                <input class="input" value="${esc(q)}" placeholder="Ex: Silva" data-action="transferSearchInput" />
+              </div>
+              <div class="col-6">
+                <div class="label">Filtrar posição</div>
+                <select class="input" data-action="transferFilterPos">${posOpts}</select>
+              </div>
+            </div>
+            <div class="sep"></div>
+            <table class="table">
+              <thead><tr><th>Nome</th><th class="center">Pos</th><th class="center">Idade</th><th class="center">OVR</th><th class="right">Valor</th><th class="center">Ação</th></tr></thead>
+              <tbody>${rows || `<tr><td colspan="6" class="mini">Nenhum jogador encontrado.</td></tr>`}</tbody>
+            </table>
+            <div class="sep"></div>
+            <button class="btn btn-primary" data-go="/hub">Voltar</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+
   /** Admin placeholder */
   function viewAdmin() {
     return `
@@ -992,18 +1308,45 @@
           if (!save) return;
           ensureSystems(save);
           const plan = save.training.weekPlan;
-          let boost = 0.5;
-          if (plan === 'Leve') boost = 0.3;
-          if (plan === 'Intenso') boost = 0.8;
+          // Define o bônus base de acordo com o plano
+          let base = 0.5;
+          if (plan === 'Leve') base = 0.3;
+          if (plan === 'Intenso') base = 0.8;
+          // Calcula o efeito dos staff contratados (bônus adicional e multiplicador)
+          const { extra, multiplier } = computeStaffTraining(save);
+          const boost = (base + extra) * multiplier;
+          // Aplica o bônus de forma a todos os jogadores do elenco
           save.squad.players = save.squad.players.map((p) => {
             const delta = Math.random() * boost;
             const newForm = Math.max(-5, Math.min(5, (p.form || 0) + delta));
             return { ...p, form: Math.round(newForm * 10) / 10 };
           });
+          // Acumula bônus total de forma no save
           save.training.formBoost = (save.training.formBoost || 0) + boost;
+          // Atualiza finanças: calcula despesas semanais e receitas de patrocínio
+          let weeklyCost = 0;
+          try {
+            const econ = state.packData?.rules?.economy;
+            weeklyCost += econ?.weeklyCosts?.staff || 0;
+            weeklyCost += econ?.weeklyCosts?.maintenance || 0;
+          } catch {}
+          // soma salários de staff contratados
+          if (Array.isArray(save.staff?.hired)) {
+            weeklyCost += save.staff.hired.reduce((s, st) => s + (st.salary || 0), 0);
+          }
+          // receitas de patrocínio semanal
+          let sponsorIncome = 0;
+          if (save.sponsorship?.current) {
+            sponsorIncome += save.sponsorship.current.weekly || 0;
+          }
+          // atualiza caixa
+          if (!save.finance) save.finance = { cash: 0 };
+          save.finance.cash = (save.finance.cash || 0) + sponsorIncome - weeklyCost;
+          // garante que caixa não fique negativo por questões de simplicidade
+          if (save.finance.cash < 0) save.finance.cash = 0;
           save.meta.updatedAt = nowIso();
           writeSlot(state.settings.activeSlotId, save);
-          alert(`Treino ${plan} aplicado!`);
+          alert(`Treino ${plan} aplicado! Bônus total: ${boost.toFixed(2)}. Receita ${sponsorIncome.toLocaleString('pt-BR', { style: 'currency', currency: state.packData?.rules?.gameRules?.currency || 'BRL' })}, despesas ${weeklyCost.toLocaleString('pt-BR', { style: 'currency', currency: state.packData?.rules?.gameRules?.currency || 'BRL' })}.`);
           route();
         });
       }

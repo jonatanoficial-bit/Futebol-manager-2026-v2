@@ -60,5 +60,115 @@
     { "id": "generic_att_03", "clubId": "__ANY__", "name": "Lucas Carvalho",     "pos": "ATT", "age": 31, "overall": 66, "value": 59400000, "nationality": null, "form": -1, "source": "generic" },
     { "id": "generic_att_04", "clubId": "__ANY__", "name": "Mateus Almeida",     "pos": "ATT", "age": 19, "overall": 64, "value": 69120000, "nationality": null, "form": 1,  "source": "generic" },
     { "id": "generic_att_05", "clubId": "__ANY__", "name": "Gabriel Gomes",      "pos": "ATT", "age": 25, "overall": 67, "value": 60300000, "nationality": null, "form": 0,  "source": "generic" }
+    ,
+    /*
+     * Abaixo seguem jogadores reais de alguns dos principais clubes do mundo e do Brasil.
+     * Eles possuem IDs únicos e são vinculados pelo campo clubId ao clube definido em clubs.json.
+     * Você pode adicionar novos jogadores seguindo este modelo: use um id simples (clubId_nome_sobrenome),
+     * defina pos (GK, DEF, MID ou ATT), idade, overall e valor aproximado. Faces e fotos podem ser
+     * adicionadas na pasta assets/images/jogadores/ usando o mesmo id para nome do arquivo (ex: flamengo_gabriel_barbosa.png).
+     */
+    { "id": "flamengo_gabriel_barbosa", "clubId": "flamengo", "name": "Gabriel Barbosa", "pos": "ATT", "age": 29, "overall": 82, "value": 73800000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "flamengo_de_arrascaeta", "clubId": "flamengo", "name": "Giorgian De Arrascaeta", "pos": "MID", "age": 31, "overall": 84, "value": 75600000, "nationality": "Uruguai", "form": 0, "source": "real" },
+    { "id": "flamengo_pedro", "clubId": "flamengo", "name": "Pedro Guilherme", "pos": "ATT", "age": 28, "overall": 80, "value": 72000000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "flamengo_gerson", "clubId": "flamengo", "name": "Gerson", "pos": "MID", "age": 26, "overall": 78, "value": 70200000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "flamengo_everton_ribeiro", "clubId": "flamengo", "name": "Everton Ribeiro", "pos": "MID", "age": 35, "overall": 77, "value": 68400000, "nationality": "Brasil", "form": 0, "source": "real" },
+
+    { "id": "palmeiras_endrick", "clubId": "palmeiras", "name": "Endrick", "pos": "ATT", "age": 18, "overall": 80, "value": 86400000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "palmeiras_raphael_veiga", "clubId": "palmeiras", "name": "Raphael Veiga", "pos": "MID", "age": 29, "overall": 82, "value": 73800000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "palmeiras_gustavo_gomez", "clubId": "palmeiras", "name": "Gustavo Gómez", "pos": "DEF", "age": 31, "overall": 81, "value": 72900000, "nationality": "Paraguai", "form": 0, "source": "real" },
+    { "id": "palmeiras_rony", "clubId": "palmeiras", "name": "Rony", "pos": "ATT", "age": 30, "overall": 79, "value": 71100000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "palmeiras_murilo", "clubId": "palmeiras", "name": "Murilo", "pos": "DEF", "age": 27, "overall": 77, "value": 68400000, "nationality": "Brasil", "form": 0, "source": "real" },
+
+    { "id": "atletico_mg_hulk", "clubId": "atletico_mg", "name": "Hulk", "pos": "ATT", "age": 37, "overall": 80, "value": 65700000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "atletico_mg_paulinho", "clubId": "atletico_mg", "name": "Paulinho", "pos": "ATT", "age": 23, "overall": 78, "value": 70200000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "atletico_mg_zaracho", "clubId": "atletico_mg", "name": "Matías Zaracho", "pos": "MID", "age": 26, "overall": 79, "value": 72000000, "nationality": "Argentina", "form": 0, "source": "real" },
+    { "id": "atletico_mg_arana", "clubId": "atletico_mg", "name": "Guilherme Arana", "pos": "DEF", "age": 27, "overall": 78, "value": 71100000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "atletico_mg_everson", "clubId": "atletico_mg", "name": "Everson", "pos": "GK", "age": 33, "overall": 77, "value": 63000000, "nationality": "Brasil", "form": 0, "source": "real" },
+
+    { "id": "corinthians_roger_guedes", "clubId": "corinthians", "name": "Róger Guedes", "pos": "ATT", "age": 28, "overall": 78, "value": 70200000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "corinthians_renato_augusto", "clubId": "corinthians", "name": "Renato Augusto", "pos": "MID", "age": 36, "overall": 77, "value": 63000000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "corinthians_fabio_santos", "clubId": "corinthians", "name": "Fábio Santos", "pos": "DEF", "age": 38, "overall": 73, "value": 45900000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "corinthians_cassio", "clubId": "corinthians", "name": "Cássio", "pos": "GK", "age": 36, "overall": 78, "value": 59400000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "corinthians_paulo_henrique", "clubId": "corinthians", "name": "Paulo Henrique", "pos": "MID", "age": 23, "overall": 74, "value": 55800000, "nationality": "Brasil", "form": 0, "source": "real" },
+
+    { "id": "sao_paulo_calleri", "clubId": "sao_paulo", "name": "Jonathan Calleri", "pos": "ATT", "age": 31, "overall": 77, "value": 63900000, "nationality": "Argentina", "form": 0, "source": "real" },
+    { "id": "sao_paulo_luciano", "clubId": "sao_paulo", "name": "Luciano", "pos": "ATT", "age": 31, "overall": 76, "value": 62100000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "sao_paulo_wellington", "clubId": "sao_paulo", "name": "Wellington", "pos": "DEF", "age": 22, "overall": 74, "value": 55800000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "sao_paulo_rafael", "clubId": "sao_paulo", "name": "Rafael", "pos": "GK", "age": 33, "overall": 77, "value": 63000000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "sao_paulo_rodrigo_nestor", "clubId": "sao_paulo", "name": "Rodrigo Nestor", "pos": "MID", "age": 23, "overall": 75, "value": 56700000, "nationality": "Brasil", "form": 0, "source": "real" },
+
+    { "id": "fluminense_german_cano", "clubId": "fluminense", "name": "Germán Cano", "pos": "ATT", "age": 37, "overall": 79, "value": 71100000, "nationality": "Argentina", "form": 0, "source": "real" },
+    { "id": "fluminense_ganso", "clubId": "fluminense", "name": "Paulo Henrique Ganso", "pos": "MID", "age": 35, "overall": 75, "value": 57600000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "fluminense_andre", "clubId": "fluminense", "name": "André", "pos": "MID", "age": 22, "overall": 78, "value": 70200000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "fluminense_arias", "clubId": "fluminense", "name": "Jhon Arias", "pos": "MID", "age": 26, "overall": 77, "value": 67500000, "nationality": "Colômbia", "form": 0, "source": "real" },
+    { "id": "fluminense_keno", "clubId": "fluminense", "name": "Keno", "pos": "ATT", "age": 34, "overall": 75, "value": 57600000, "nationality": "Brasil", "form": 0, "source": "real" },
+
+    { "id": "real_madrid_vinicius", "clubId": "real_madrid", "name": "Vinícius Júnior", "pos": "ATT", "age": 24, "overall": 88, "value": 95040000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "real_madrid_rodrigo", "clubId": "real_madrid", "name": "Rodrygo", "pos": "ATT", "age": 23, "overall": 86, "value": 93060000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "real_madrid_bellingham", "clubId": "real_madrid", "name": "Jude Bellingham", "pos": "MID", "age": 22, "overall": 89, "value": 96030000, "nationality": "Inglaterra", "form": 0, "source": "real" },
+    { "id": "real_madrid_modric", "clubId": "real_madrid", "name": "Luka Modrić", "pos": "MID", "age": 38, "overall": 85, "value": 76500000, "nationality": "Croácia", "form": 0, "source": "real" },
+    { "id": "real_madrid_courtois", "clubId": "real_madrid", "name": "Thibaut Courtois", "pos": "GK", "age": 32, "overall": 89, "value": 80100000, "nationality": "Bélgica", "form": 0, "source": "real" },
+
+    { "id": "barcelona_lewandowski", "clubId": "barcelona", "name": "Robert Lewandowski", "pos": "ATT", "age": 37, "overall": 87, "value": 78300000, "nationality": "Polônia", "form": 0, "source": "real" },
+    { "id": "barcelona_pedri", "clubId": "barcelona", "name": "Pedri", "pos": "MID", "age": 22, "overall": 85, "value": 85500000, "nationality": "Espanha", "form": 0, "source": "real" },
+    { "id": "barcelona_gavi", "clubId": "barcelona", "name": "Gavi", "pos": "MID", "age": 21, "overall": 84, "value": 84000000, "nationality": "Espanha", "form": 0, "source": "real" },
+    { "id": "barcelona_raphinha", "clubId": "barcelona", "name": "Raphinha", "pos": "ATT", "age": 28, "overall": 83, "value": 77400000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "barcelona_araujo", "clubId": "barcelona", "name": "Ronald Araújo", "pos": "DEF", "age": 25, "overall": 85, "value": 78300000, "nationality": "Uruguai", "form": 0, "source": "real" },
+
+    { "id": "man_city_haaland", "clubId": "man_city", "name": "Erling Haaland", "pos": "ATT", "age": 24, "overall": 90, "value": 97200000, "nationality": "Noruega", "form": 0, "source": "real" },
+    { "id": "man_city_de_bruyne", "clubId": "man_city", "name": "Kevin De Bruyne", "pos": "MID", "age": 34, "overall": 89, "value": 80100000, "nationality": "Bélgica", "form": 0, "source": "real" },
+    { "id": "man_city_foden", "clubId": "man_city", "name": "Phil Foden", "pos": "MID", "age": 25, "overall": 86, "value": 83400000, "nationality": "Inglaterra", "form": 0, "source": "real" },
+    { "id": "man_city_rodri", "clubId": "man_city", "name": "Rodri", "pos": "MID", "age": 28, "overall": 88, "value": 85500000, "nationality": "Espanha", "form": 0, "source": "real" },
+    { "id": "man_city_ruben_dias", "clubId": "man_city", "name": "Rúben Dias", "pos": "DEF", "age": 27, "overall": 87, "value": 78300000, "nationality": "Portugal", "form": 0, "source": "real" },
+
+    { "id": "psg_mbappe", "clubId": "psg", "name": "Kylian Mbappé", "pos": "ATT", "age": 27, "overall": 91, "value": 99000000, "nationality": "França", "form": 0, "source": "real" },
+    { "id": "psg_dembélé", "clubId": "psg", "name": "Ousmane Dembélé", "pos": "ATT", "age": 27, "overall": 84, "value": 80100000, "nationality": "França", "form": 0, "source": "real" },
+    { "id": "psg_hakimi", "clubId": "psg", "name": "Achraf Hakimi", "pos": "DEF", "age": 26, "overall": 85, "value": 77400000, "nationality": "Marrocos", "form": 0, "source": "real" },
+    { "id": "psg_ugarte", "clubId": "psg", "name": "Manuel Ugarte", "pos": "MID", "age": 24, "overall": 82, "value": 72900000, "nationality": "Uruguai", "form": 0, "source": "real" },
+    { "id": "psg_vitinha", "clubId": "psg", "name": "Vitinha", "pos": "MID", "age": 25, "overall": 83, "value": 74700000, "nationality": "Portugal", "form": 0, "source": "real" },
+
+    { "id": "bayern_kane", "clubId": "bayern", "name": "Harry Kane", "pos": "ATT", "age": 32, "overall": 88, "value": 84600000, "nationality": "Inglaterra", "form": 0, "source": "real" },
+    { "id": "bayern_musiala", "clubId": "bayern", "name": "Jamal Musiala", "pos": "MID", "age": 22, "overall": 86, "value": 80100000, "nationality": "Alemanha", "form": 0, "source": "real" },
+    { "id": "bayern_kimmich", "clubId": "bayern", "name": "Joshua Kimmich", "pos": "MID", "age": 31, "overall": 86, "value": 77400000, "nationality": "Alemanha", "form": 0, "source": "real" },
+    { "id": "bayern_davies", "clubId": "bayern", "name": "Alphonso Davies", "pos": "DEF", "age": 25, "overall": 85, "value": 78300000, "nationality": "Canadá", "form": 0, "source": "real" },
+    { "id": "bayern_goretzka", "clubId": "bayern", "name": "Leon Goretzka", "pos": "MID", "age": 30, "overall": 84, "value": 75600000, "nationality": "Alemanha", "form": 0, "source": "real" }
+
+    ,
+    /*
+     * Reforço de clubes europeus adicionais
+     * Incluímos alguns jogadores famosos da Juventus, Inter e Milan (Itália),
+     * bem como Benfica e Porto (Portugal). Estes exemplos mostram como você pode
+     * adicionar jogadores reais de qualquer liga. Sinta‑se livre para expandir.
+     */
+    { "id": "juventus_vlahovic", "clubId": "juventus", "name": "Dušan Vlahović", "pos": "ATT", "age": 25, "overall": 84, "value": 77400000, "nationality": "Sérvia", "form": 0, "source": "real" },
+    { "id": "juventus_chiesa", "clubId": "juventus", "name": "Federico Chiesa", "pos": "ATT", "age": 27, "overall": 83, "value": 76500000, "nationality": "Itália", "form": 0, "source": "real" },
+    { "id": "juventus_locatelli", "clubId": "juventus", "name": "Manuel Locatelli", "pos": "MID", "age": 28, "overall": 82, "value": 73800000, "nationality": "Itália", "form": 0, "source": "real" },
+    { "id": "juventus_bremer", "clubId": "juventus", "name": "Gleison Bremer", "pos": "DEF", "age": 27, "overall": 82, "value": 72000000, "nationality": "Brasil", "form": 0, "source": "real" },
+    { "id": "juventus_szczesny", "clubId": "juventus", "name": "Wojciech Szczęsny", "pos": "GK", "age": 34, "overall": 83, "value": 69300000, "nationality": "Polônia", "form": 0, "source": "real" },
+
+    { "id": "inter_lautaro", "clubId": "inter", "name": "Lautaro Martínez", "pos": "ATT", "age": 28, "overall": 86, "value": 84600000, "nationality": "Argentina", "form": 0, "source": "real" },
+    { "id": "inter_barella", "clubId": "inter", "name": "Nicolò Barella", "pos": "MID", "age": 27, "overall": 86, "value": 83700000, "nationality": "Itália", "form": 0, "source": "real" },
+    { "id": "inter_bastoni", "clubId": "inter", "name": "Alessandro Bastoni", "pos": "DEF", "age": 26, "overall": 85, "value": 80100000, "nationality": "Itália", "form": 0, "source": "real" },
+    { "id": "inter_thuram", "clubId": "inter", "name": "Marcus Thuram", "pos": "ATT", "age": 27, "overall": 82, "value": 73800000, "nationality": "França", "form": 0, "source": "real" },
+    { "id": "inter_sommer", "clubId": "inter", "name": "Yann Sommer", "pos": "GK", "age": 36, "overall": 84, "value": 72000000, "nationality": "Suíça", "form": 0, "source": "real" },
+
+    { "id": "milan_leao", "clubId": "milan", "name": "Rafael Leão", "pos": "ATT", "age": 25, "overall": 86, "value": 85500000, "nationality": "Portugal", "form": 0, "source": "real" },
+    { "id": "milan_giroud", "clubId": "milan", "name": "Olivier Giroud", "pos": "ATT", "age": 38, "overall": 80, "value": 65700000, "nationality": "França", "form": 0, "source": "real" },
+    { "id": "milan_tomori", "clubId": "milan", "name": "Fikayo Tomori", "pos": "DEF", "age": 26, "overall": 84, "value": 78300000, "nationality": "Inglaterra", "form": 0, "source": "real" },
+    { "id": "milan_maignan", "clubId": "milan", "name": "Mike Maignan", "pos": "GK", "age": 29, "overall": 85, "value": 80100000, "nationality": "França", "form": 0, "source": "real" },
+    { "id": "milan_hernandez", "clubId": "milan", "name": "Theo Hernández", "pos": "DEF", "age": 28, "overall": 85, "value": 78300000, "nationality": "França", "form": 0, "source": "real" },
+
+    { "id": "benfica_joao_mario", "clubId": "benfica", "name": "João Mário", "pos": "MID", "age": 33, "overall": 81, "value": 72000000, "nationality": "Portugal", "form": 0, "source": "real" },
+    { "id": "benfica_dimaria", "clubId": "benfica", "name": "Ángel Di María", "pos": "ATT", "age": 37, "overall": 82, "value": 65700000, "nationality": "Argentina", "form": 0, "source": "real" },
+    { "id": "benfica_antonio_silva", "clubId": "benfica", "name": "António Silva", "pos": "DEF", "age": 21, "overall": 82, "value": 74700000, "nationality": "Portugal", "form": 0, "source": "real" },
+    { "id": "benfica_kokcu", "clubId": "benfica", "name": "Orkun Kökçü", "pos": "MID", "age": 25, "overall": 81, "value": 72000000, "nationality": "Turquia", "form": 0, "source": "real" },
+    { "id": "benfica_rafa", "clubId": "benfica", "name": "Rafa Silva", "pos": "MID", "age": 32, "overall": 80, "value": 69300000, "nationality": "Portugal", "form": 0, "source": "real" },
+
+    { "id": "porto_taremi", "clubId": "porto", "name": "Mehdi Taremi", "pos": "ATT", "age": 33, "overall": 81, "value": 71100000, "nationality": "Irã", "form": 0, "source": "real" },
+    { "id": "porto_pepe", "clubId": "porto", "name": "Pepe", "pos": "DEF", "age": 41, "overall": 79, "value": 56700000, "nationality": "Portugal", "form": 0, "source": "real" },
+    { "id": "porto_otavio", "clubId": "porto", "name": "Otávio", "pos": "MID", "age": 30, "overall": 82, "value": 74700000, "nationality": "Portugal", "form": 0, "source": "real" },
+    { "id": "porto_diogo_costa", "clubId": "porto", "name": "Diogo Costa", "pos": "GK", "age": 26, "overall": 84, "value": 78300000, "nationality": "Portugal", "form": 0, "source": "real" },
+    { "id": "porto_marcanos", "clubId": "porto", "name": "Iván Marcano", "pos": "DEF", "age": 37, "overall": 77, "value": 59400000, "nationality": "Espanha", "form": 0, "source": "real" }
   ]
 }
