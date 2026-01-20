@@ -1073,14 +1073,40 @@
   }
 
   function simulateMatch(homeId, awayId, save) {
+    // Simulação mais realista (Poisson) com vantagem de mando e força relativa
     const h = teamStrength(homeId, save);
     const a = teamStrength(awayId, save);
-    const advantage = 1.5;
+    const advantage = 1.6; // mando de campo
     const diff = (h + advantage) - a;
-    const baseGoals = 1.1;
-    const hg = clampInt(Math.round(randNormal(baseGoals + diff / 18, 0.9)), 0, 6);
-    const ag = clampInt(Math.round(randNormal(baseGoals - diff / 22, 0.9)), 0, 6);
-    return { hg, ag };
+
+    // converte diferença de força em expectativa de gols
+    const base = 1.25;
+    const lamHome = clampFloat(base + (diff / 18), 0.2, 3.2);
+    const lamAway = clampFloat(base - (diff / 22), 0.2, 3.0);
+
+    const hg = clampInt(poisson(lamHome), 0, 7);
+    const ag = clampInt(poisson(lamAway), 0, 7);
+
+    // Pequena variância extra em jogos desequilibrados
+    return { hg, ag, lamHome: round2(lamHome), lamAway: round2(lamAway) };
+  }
+
+  function round2(n) { return Math.round(n * 100) / 100; }
+
+  function clampFloat(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  // Poisson (Knuth)
+  function poisson(lambda) {
+    const L = Math.exp(-lambda);
+    let k = 0;
+    let p = 1;
+    do {
+      k += 1;
+      p *= Math.random();
+    } while (p > L);
+    return k - 1;
   }
 
   function randNormal(mean, std) {
@@ -1094,6 +1120,27 @@
 
   function clampInt(n, min, max) {
     return Math.max(min, Math.min(max, n));
+  }
+
+  // -----------------------------
+  // UI helpers (logos)
+  // -----------------------------
+  function clubInitials(club) {
+    const s = (club?.short || club?.name || club?.id || 'CLB').trim();
+    return s.slice(0, 3).toUpperCase();
+  }
+
+  function clubLogoHtml(clubId, size = 34) {
+    const c = getClub(clubId);
+    const initials = clubInitials(c);
+    const s = Number(size) || 34;
+    // ... try PNG -> SVG -> fallback initials
+    return `
+      <div class="club-logo" style="width:${s}px;height:${s}px;border-radius:14px;">
+        <img src="./assets/logos/${esc(clubId)}.png" alt="${esc(c?.name || clubId)}"
+          onerror="if(!this.dataset.svgTried){this.dataset.svgTried='1';this.src='./assets/logos/${esc(clubId)}.svg';return;} this.remove(); this.parentElement.innerHTML='<div class=\"club-fallback\">${esc(initials)}</div>';">
+      </div>
+    `;
   }
 
   function applyResultToTable(table, homeId, awayId, hg, ag) {
@@ -1122,17 +1169,59 @@
       const rows = sortTableRows(Object.values(save.season.table));
       const userPos = rows.findIndex(x => x.id === save.career.clubId) + 1;
 
-      const roundMatches = save.season.rounds[r] || [];
-      const myGame = roundMatches.find(m => m.homeId === save.career.clubId || m.awayId === save.career.clubId) || null;
+      const nextRoundMatches = save.season.rounds[r] || [];
+      const lastRoundIndex = Number.isFinite(save.season.lastRoundPlayed) ? save.season.lastRoundPlayed : -1;
+      const lastResults = Array.isArray(save.season.lastResults) ? save.season.lastResults : [];
 
-      function matchLine(m) {
-        const h = getClub(m.homeId)?.short || getClub(m.homeId)?.name || m.homeId;
-        const a = getClub(m.awayId)?.short || getClub(m.awayId)?.name || m.awayId;
-        const score = m.played ? `<b>${m.hg} x ${m.ag}</b>` : `<span class="badge">Não jogado</span>`;
-        return `<div class="item"><div class="item-left"><div class="item-title">${esc(h)} vs ${esc(a)}</div><div class="item-sub">Rodada ${r+1}/${totalRounds}</div></div><div class="item-right">${score}</div></div>`;
+      function resultBadge(m) {
+        const isUser = (m.homeId === save.career.clubId || m.awayId === save.career.clubId);
+        if (!isUser || !m.played) return '';
+        const userHome = m.homeId === save.career.clubId;
+        const ug = userHome ? m.hg : m.ag;
+        const og = userHome ? m.ag : m.hg;
+        if (ug > og) return `<span class="badge" style="border-color: rgba(34,197,94,.45); color:#c9ffd8">VITÓRIA</span>`;
+        if (ug < og) return `<span class="badge" style="border-color: rgba(239,68,68,.45); color:#ffd1d1">DERROTA</span>`;
+        return `<span class="badge" style="border-color: rgba(245,158,11,.45); color:#ffe7b3">EMPATE</span>`;
       }
 
-      const list = roundMatches.length ? roundMatches.map(matchLine).join('') : `<div class="notice">Temporada encerrada.</div>`;
+      function matchRow(m, subtitle) {
+        const hc = getClub(m.homeId);
+        const ac = getClub(m.awayId);
+        const score = m.played ? `<b style="font-size:16px">${m.hg} x ${m.ag}</b>` : `<span class="badge">Não jogado</span>`;
+        const xg = (m.played && (m.xgH != null) && (m.xgA != null)) ? `<div class="small">xG ${m.xgH} • ${m.xgA}</div>` : '';
+        const isUser = (m.homeId === save.career.clubId || m.awayId === save.career.clubId);
+        const outline = isUser ? ' style="outline:1px solid rgba(34,197,94,.40)"' : '';
+        return `
+          <div class="item"${outline}>
+            <div class="item-left" style="display:flex; gap:10px; align-items:center;">
+              ${clubLogoHtml(m.homeId, 34)}
+              <div style="min-width:0;">
+                <div class="item-title">${esc(hc?.short || hc?.name || m.homeId)} <span class="small">vs</span> ${esc(ac?.short || ac?.name || m.awayId)}</div>
+                <div class="item-sub">${esc(subtitle)} ${xg}</div>
+              </div>
+              ${clubLogoHtml(m.awayId, 34)}
+            </div>
+            <div class="item-right" style="align-items:center;">
+              ${resultBadge(m)}
+              ${score}
+            </div>
+          </div>
+        `;
+      }
+
+      const lastBlock = lastResults.length
+        ? `<div class="card" style="margin-bottom:12px;">
+             <div class="card-header"><div><div class="card-title">Resultados da Rodada ${lastRoundIndex + 1}</div><div class="card-subtitle">Resumo da última rodada jogada</div></div></div>
+             <div class="card-body"><div class="list">${lastResults.map(m => matchRow(m, 'Rodada ' + (lastRoundIndex + 1) + '/' + totalRounds)).join('')}</div></div>
+           </div>`
+        : `<div class="notice">Nenhum resultado ainda. Clique em <b>Jogar Próxima Rodada</b>.</div>`;
+
+      const nextBlock = nextRoundMatches.length
+        ? `<div class="card">
+             <div class="card-header"><div><div class="card-title">Próxima Rodada ${Math.min(r + 1, totalRounds)}</div><div class="card-subtitle">Partidas agendadas</div></div></div>
+             <div class="card-body"><div class="list">${nextRoundMatches.map(m => matchRow(m, 'Rodada ' + (r + 1) + '/' + totalRounds)).join('')}</div></div>
+           </div>`
+        : `<div class="notice">Temporada encerrada.</div>`;
 
       writeSlot(state.settings.activeSlotId, save);
 
@@ -1152,9 +1241,8 @@
               <button class="btn" data-go="/hub">Voltar</button>
             </div>
             <div class="sep"></div>
-            <div class="list">
-              ${list}
-            </div>
+            ${lastBlock}
+            ${nextBlock}
           </div>
         </div>
       `;
@@ -1174,7 +1262,12 @@
         return `
           <tr${mark}>
             <td>${idx+1}</td>
-            <td>${esc(t.name)}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                ${clubLogoHtml(t.id, 26)}
+                <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(t.name)}</span>
+              </div>
+            </td>
             <td class="right">${t.P}</td>
             <td class="right">${t.W}</td>
             <td class="right">${t.D}</td>
@@ -1780,10 +1873,17 @@
           const matches = rounds[r];
           matches.forEach(m => {
             if (m.played) return;
-            const { hg, ag } = simulateMatch(m.homeId, m.awayId, save);
-            m.hg = hg; m.ag = ag; m.played = true;
-            applyResultToTable(save.season.table, m.homeId, m.awayId, hg, ag);
+            const sim = simulateMatch(m.homeId, m.awayId, save);
+            m.hg = sim.hg; m.ag = sim.ag; m.played = true;
+            // xG simplificado para exibir no resumo
+            m.xgH = sim.lamHome;
+            m.xgA = sim.lamAway;
+            applyResultToTable(save.season.table, m.homeId, m.awayId, m.hg, m.ag);
           });
+
+          // Guarda o resumo da rodada jogada (para exibir resultados)
+          save.season.lastRoundPlayed = r;
+          save.season.lastResults = (matches || []).map(m => ({ ...m }));
 
           // receitas/ custos semanais ao jogar uma rodada
           const econ = state.packData?.rules?.economy || {};
