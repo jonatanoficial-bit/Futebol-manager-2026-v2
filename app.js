@@ -483,6 +483,15 @@
       ? state.packs.find((p) => p.id === state.settings.selectedPackId)?.name || state.settings.selectedPackId
       : "Nenhum";
     const slotLabel = state.settings.activeSlotId ? `Slot ${state.settings.activeSlotId}` : "Nenhum";
+
+    // Só libera HUB quando existir um save ativo e um clube selecionado
+    let canGoHub = false;
+    try {
+      const s = state.settings.activeSlotId ? readSlot(state.settings.activeSlotId) : null;
+      canGoHub = !!(s && s.career && s.career.clubId);
+    } catch {
+      canGoHub = false;
+    }
     return `
       <div class="card">
         <div class="card-header">
@@ -507,7 +516,7 @@
           <div class="row">
             <button class="btn btn-primary" data-go="/dlc">Iniciar Carreira</button>
             <button class="btn" data-go="/admin">Admin</button>
-            <button class="btn" data-go="/hub">HUB</button>
+            ${canGoHub ? `<button class="btn" data-go="/hub">HUB</button>` : ``}
           </div>
         </div>
       </div>
@@ -750,6 +759,31 @@
   function viewHub() {
     return requireSave((save) => {
       ensureSystems(save);
+
+      // HUB é o lobby do usuário dentro do jogo. Se ainda não escolheu clube,
+      // força o fluxo correto: Escolha de Clube -> Tutorial -> HUB.
+      if (!save?.career?.clubId) {
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Escolha um clube primeiro</div>
+                <div class="card-subtitle">O HUB só fica disponível após você selecionar seu time.</div>
+              </div>
+              <span class="badge">Fluxo</span>
+            </div>
+            <div class="card-body">
+              <div class="notice">Vá para a tela de <b>Escolha de Clube</b> para continuar sua carreira.</div>
+              <div class="sep"></div>
+              <div class="row">
+                <button class="btn btn-primary" data-go="/club-pick">Escolher Clube</button>
+                <button class="btn" data-go="/home">Menu</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
       const club = getClub(save.career.clubId);
       // Format cash and current sponsor for display
       const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
