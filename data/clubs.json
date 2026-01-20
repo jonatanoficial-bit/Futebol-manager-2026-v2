@@ -1,0 +1,60 @@
+{
+  "clubs": [
+    {
+      "id": 1,
+      "name": "Palmeiras",
+      "league": "Serie A",
+      "logo": "1.png",
+      "country": "Brazil"
+    },
+    {
+      "id": 2,
+      "name": "Flamengo",
+      "league": "Serie A",
+      "logo": "2.png",
+      "country": "Brazil"
+    },
+    {
+      "id": 3,
+      "name": "Internacional",
+      "league": "Serie A",
+      "logo": "3.png",
+      "country": "Brazil"
+    },
+    {
+      "id": 4,
+      "name": "Gremio",
+      "league": "Serie A",
+      "logo": "4.png",
+      "country": "Brazil"
+    },
+    {
+      "id": 5,
+      "name": "Corinthians",
+      "league": "Serie A",
+      "logo": "5.png",
+      "country": "Brazil"
+    },
+    {
+      "id": 6,
+      "name": "Sao Paulo",
+      "league": "Serie A",
+      "logo": "6.png",
+      "country": "Brazil"
+    },
+    {
+      "id": 7,
+      "name": "Atletico Mineiro",
+      "league": "Serie A",
+      "logo": "7.png",
+      "country": "Brazil"
+    },
+    {
+      "id": 8,
+      "name": "Santos",
+      "league": "Serie A",
+      "logo": "8.png",
+      "country": "Brazil"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "competitions": [
+    {
+      "id": "brasileirao",
+      "name": "Campeonato Brasileiro",
+      "type": "league",
+      "teams": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "rounds": 14,
+      "rules": {
+        "pointsWin": 3,
+        "pointsDraw": 1,
+        "pointsLoss": 0,
+        "relegation": 2,
+        "qualification": {
+          "libertadores": 2,
+          "sulamericana": 4
+        }
+      }
+    },
+    {
+      "id": "copa_do_brasil",
+      "name": "Copa do Brasil",
+      "type": "cup",
+      "teams": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "rounds": 3
+    }
+  ]
+}
