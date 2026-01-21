@@ -998,8 +998,9 @@
     if (save.season.id && save.season.leagueId && Array.isArray(save.season.rounds)) return;
 
     const club = getClub(save.career.clubId);
-    const leagueId = club?.leagueId || 'BRA_SERIE_A';
-    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === leagueId);
+    const baseLeagueId = club?.leagueId || 'BRA_SERIE_A';
+    const leagueId = (save.world?.leagueOverrides?.[save.career.clubId]) || baseLeagueId;
+    const clubs = (state.packData?.clubs?.clubs || []).filter(c => ((save.world?.leagueOverrides?.[c.id]) || c.leagueId) === leagueId);
     const clubIds = clubs.map(c => c.id);
     const rounds = generateDoubleRoundRobin(clubIds);
     const table = buildEmptyTable(clubs);
@@ -1012,6 +1013,302 @@
       table
     };
   }
+
+
+  // -----------------------------
+  // Season Extensions (Cup + Continental + Promotion/Relegation)
+  // -----------------------------
+  function ensureSeasonExtensions(save) {
+    if (!save.season) return;
+    if (!save.season.ext) save.season.ext = {};
+    const ext = save.season.ext;
+    if (ext.initialized) return;
+
+    const club = getClub(save.career.clubId);
+    const leagueId = save.season.leagueId || club?.leagueId || 'BRA_SERIE_A';
+
+    // Build Serie B simulation in background (for promotion/relegation)
+    if (!ext.otherLeagues) ext.otherLeagues = {};
+    if (!ext.otherLeagues.BRA_SERIE_B) {
+      const bClubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === 'BRA_SERIE_B');
+      const bIds = bClubs.map(c => c.id);
+      if (bIds.length >= 2) {
+        ext.otherLeagues.BRA_SERIE_B = {
+          leagueId: 'BRA_SERIE_B',
+          rounds: generateDoubleRoundRobin(bIds),
+          currentRound: 0,
+          table: buildEmptyTable(bClubs)
+        };
+      }
+    }
+
+    // Decide continental for first season (if no history): based on club ranking by overall in its league
+    if (!ext.continental) ext.continental = { qualified: null, competitionId: null, group: null, table: null, matchesByWeek: {} };
+    if (!ext.continental.qualified) {
+      ext.continental.qualified = decideInitialContinentalQualification(save);
+      ext.continental.competitionId = ext.continental.qualified; // 'LIBERTADORES' | 'SUDAMERICANA' | null
+    }
+
+    // Build Copa do Brasil (simplified) if Brazil league
+    if (!ext.cups) ext.cups = {};
+    if (!ext.cups.BRA_COPA_DO_BRASIL && (leagueId === 'BRA_SERIE_A' || leagueId === 'BRA_SERIE_B')) {
+      ext.cups.BRA_COPA_DO_BRASIL = buildCopaDoBrasil(save);
+    }
+
+    // Build continental schedule only for user's team (lightweight)
+    if (ext.continental.competitionId && !ext.continental.group) {
+      buildContinentalForUser(save, ext.continental.competitionId);
+    }
+
+    // Precompute "events per league round" to show in calendar and allow sim
+    ext.weekEvents = ext.weekEvents || {}; // { [weekIndex]: { cupMatchId?, continentalMatchIds? } }
+    wireCupMatchesIntoWeeks(save);
+    wireContinentalIntoWeeks(save);
+
+    ext.initialized = true;
+  }
+
+  function decideInitialContinentalQualification(save) {
+    // Only CONMEBOL for now (packs focam Brasil).
+    // Se já existir histórico de vagas, respeita.
+    const hist = save.history?.lastSeasonQualification;
+    if (hist && (hist === 'LIBERTADORES' || hist === 'SUDAMERICANA')) return hist;
+
+    const club = getClub(save.career.clubId);
+    const leagueId = club?.leagueId || save.season.leagueId || 'BRA_SERIE_A';
+    if (leagueId !== 'BRA_SERIE_A') return null;
+
+    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === 'BRA_SERIE_A');
+    const sorted = [...clubs].sort((a,b) => (b.overall||0)-(a.overall||0));
+    const pos = sorted.findIndex(c => c.id === save.career.clubId) + 1;
+    if (pos >= 1 && pos <= 4) return 'LIBERTADORES';
+    if (pos >= 5 && pos <= 10) return 'SUDAMERICANA';
+    return null;
+  }
+
+  function buildCopaDoBrasil(save) {
+    const all = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === 'BRA_SERIE_A' || c.leagueId === 'BRA_SERIE_B');
+    // pick 32 teams, ensure user's club is included
+    const userId = save.career.clubId;
+    const pool = all.map(c => c.id).filter(id => id !== userId);
+    shuffleInPlace(pool);
+    const teams = [userId, ...pool].slice(0, 32);
+    const bracket = {
+      id: 'BRA_COPA_DO_BRASIL',
+      name: 'Copa do Brasil',
+      roundNames: ['32-avos','16-avos','Oitavas','Quartas','Semifinal','Final'],
+      rounds: [],
+      winner: null,
+      eliminated: {}
+    };
+
+    // create rounds single match (simplified)
+    let currentTeams = teams;
+    for (let r = 0; r < bracket.roundNames.length; r++) {
+      const matches = [];
+      for (let i = 0; i < currentTeams.length; i += 2) {
+        const homeId = currentTeams[i];
+        const awayId = currentTeams[i+1];
+        if (!awayId) continue;
+        matches.push({ id: `CDB_${r}_${i/2}`, compId:'BRA_COPA_DO_BRASIL', roundIndex:r, homeId, awayId, played:false, hg:0, ag:0 });
+      }
+      bracket.rounds.push({ name: bracket.roundNames[r], matches });
+      // next teams determined after playing, but we can pre-fill placeholders
+      currentTeams = new Array(Math.ceil(currentTeams.length/2)).fill('__TBD__');
+    }
+    return bracket;
+  }
+
+  function buildContinentalForUser(save, compId) {
+    const ext = save.season.ext;
+    const userId = save.career.clubId;
+    const club = getClub(userId);
+    const name = compId === 'LIBERTADORES' ? 'CONMEBOL Libertadores' : 'CONMEBOL Sul-Americana';
+
+    // generate 3 generic opponents (virtual) to avoid needing full DB
+    const opps = [
+      { id: `${compId}_V1`, name: 'Club Atlético Norte', short: 'CAN', overall: clampInt((club?.overall||70)-2, 55, 85) },
+      { id: `${compId}_V2`, name: 'Deportivo Central', short: 'DCE', overall: clampInt((club?.overall||70)-4, 55, 85) },
+      { id: `${compId}_V3`, name: 'Sporting del Sur', short: 'SDS', overall: clampInt((club?.overall||70)-1, 55, 85) }
+    ];
+
+    ext.continental.group = {
+      id: 'G1',
+      name: 'Grupo A',
+      teams: [userId, ...opps.map(o => o.id)]
+    };
+
+    // standings table for group
+    ext.continental.table = {};
+    ext.continental.table[userId] = { id:userId, name: club?.name||userId, P:0, W:0, D:0, L:0, GF:0, GA:0, GD:0, Pts:0 };
+    opps.forEach(o => {
+      ext.continental.table[o.id] = { id:o.id, name:o.name, P:0, W:0, D:0, L:0, GF:0, GA:0, GD:0, Pts:0, virtual:true, short:o.short, overall:o.overall };
+    });
+
+    // create 6 matchdays (double round robin among 4 teams but only simulate user's matches; other matches not needed)
+    // We'll schedule user's matches across 6 weeks spread out
+    const matchdays = [];
+    const oppIds = opps.map(o => o.id);
+    // 3 opponents, play each twice
+    const pairings = [
+      { home:userId, away: oppIds[0] },
+      { home:oppIds[1], away: userId },
+      { home:userId, away: oppIds[2] },
+      { home:oppIds[0], away: userId },
+      { home:userId, away: oppIds[1] },
+      { home:oppIds[2], away: userId }
+    ];
+    pairings.forEach((p, i) => {
+      matchdays.push({ id:`${compId}_MD${i+1}`, compId, stage:'GROUP', matchday:i+1, homeId:p.home, awayId:p.away, played:false, hg:0, ag:0 });
+    });
+
+    // place these matches later via wireContinentalIntoWeeks
+    ext.continental.matches = matchdays;
+    ext.continental.name = name;
+  }
+
+  function wireCupMatchesIntoWeeks(save) {
+    const ext = save.season.ext;
+    const cup = ext.cups?.BRA_COPA_DO_BRASIL;
+    if (!cup) return;
+    if (!ext.weekEvents) ext.weekEvents = {};
+
+    // Map cup rounds into specific league rounds (weeks) to interleave:
+    // Round of 32: week 3, 16: week 8, 8: week 13, QF: week 18, SF: week 25, Final: week 33
+    const mapWeeks = [2,7,12,17,24,32]; // 0-based
+    cup.rounds.forEach((r, idx) => {
+      const w = mapWeeks[idx] ?? (idx*5);
+      if (!ext.weekEvents[w]) ext.weekEvents[w] = { cupMatchIds: [], continentalMatchIds: [] };
+      // Find user's match only, keep lightweight
+      const userId = save.career.clubId;
+      const m = r.matches.find(x => x.homeId === userId || x.awayId === userId);
+      if (m) ext.weekEvents[w].cupMatchIds.push(m.id);
+    });
+  }
+
+  function wireContinentalIntoWeeks(save) {
+    const ext = save.season.ext;
+    if (!ext.continental?.matches || !ext.continental?.competitionId) return;
+    if (!ext.weekEvents) ext.weekEvents = {};
+
+    // Spread 6 matchdays through season: weeks 4,6,10,14,20,28 (0-based)
+    const weeks = [3,5,9,13,19,27];
+    ext.continental.matches.forEach((m, idx) => {
+      const w = weeks[idx] ?? (idx*4);
+      if (!ext.weekEvents[w]) ext.weekEvents[w] = { cupMatchIds: [], continentalMatchIds: [] };
+      ext.weekEvents[w].continentalMatchIds.push(m.id);
+      // Also index by week for quick lookup
+      ext.continental.matchesByWeek[w] = ext.continental.matchesByWeek[w] || [];
+      ext.continental.matchesByWeek[w].push(m.id);
+    });
+  }
+
+  function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
+  function findCupMatchById(save, id) {
+    const cup = save.season?.ext?.cups?.BRA_COPA_DO_BRASIL;
+    if (!cup) return null;
+    for (const r of cup.rounds) {
+      const m = r.matches.find(x => x.id === id);
+      if (m) return m;
+    }
+    return null;
+  }
+
+  function findContinentalMatchById(save, id) {
+    const c = save.season?.ext?.continental;
+    if (!c || !Array.isArray(c.matches)) return null;
+    return c.matches.find(x => x.id === id) || null;
+  }
+
+  function applyLeagueRulesSorting(rows, leagueId) {
+    // Try to use rules.json if available; fallback to default.
+    const rules = state.packData?.rules || {};
+    const tbs = rules?.countries?.BRA?.leagues?.[leagueId]?.tiebreakers || rules?.universal?.tiebreakersDefault;
+    const order = Array.isArray(tbs) ? tbs : ['points','goalDifference','goalsFor'];
+    return rows.sort((a,b) => {
+      for (const k of order) {
+        if (k === 'points' && b.Pts !== a.Pts) return b.Pts - a.Pts;
+        if (k === 'wins' && b.W !== a.W) return b.W - a.W;
+        if (k === 'goalDifference' && b.GD !== a.GD) return b.GD - a.GD;
+        if (k === 'goalsFor' && b.GF !== a.GF) return b.GF - a.GF;
+        if (k === 'headToHead') continue;
+        if (k === 'fairPlay') continue;
+        if (k === 'drawLots') continue;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  function seasonFinalizeIfEnded(save) {
+    ensureSeason(save);
+      ensureSeasonExtensions(save);
+      seasonFinalizeIfEnded(save);
+    ensureSeasonExtensions(save);
+
+    const total = save.season.rounds.length;
+    if (save.season.currentRound < total) return false;
+
+    if (!save.history) save.history = {};
+    if (!save.history.seasons) save.history.seasons = [];
+    if (save.season.ext?.finalized) return true;
+
+    // Compute final tables Serie A and Serie B (background)
+    const aRows = applyLeagueRulesSorting(Object.values(save.season.table), 'BRA_SERIE_A');
+    const bObj = save.season.ext?.otherLeagues?.BRA_SERIE_B;
+    const bRows = bObj ? applyLeagueRulesSorting(Object.values(bObj.table), 'BRA_SERIE_B') : [];
+
+    const relegated = aRows.slice(-4).map(x => x.id);
+    const promoted = bRows.slice(0,4).map(x => x.id);
+
+    save.history.seasons.push({
+      seasonId: save.season.id,
+      leagueId: save.season.leagueId,
+      champion: aRows[0]?.id || null,
+      relegated,
+      promoted,
+      endedAt: nowIso()
+    });
+
+    // Store qualification for next season (based on positions)
+    const userPos = aRows.findIndex(x => x.id === save.career.clubId) + 1;
+    let qual = null;
+    if (save.season.leagueId === 'BRA_SERIE_A') {
+      if (userPos >= 1 && userPos <= 4) qual = 'LIBERTADORES';
+      else if (userPos >= 5 && userPos <= 10) qual = 'SUDAMERICANA';
+    }
+    save.history.lastSeasonQualification = qual;
+
+    // Apply league overrides for next season only (does not touch base data)
+    if (!save.world) save.world = {};
+    if (!save.world.leagueOverrides) save.world.leagueOverrides = {};
+    relegated.forEach(id => save.world.leagueOverrides[id] = 'BRA_SERIE_B');
+    promoted.forEach(id => save.world.leagueOverrides[id] = 'BRA_SERIE_A');
+
+    save.season.ext.finalized = true;
+    return true;
+  }
+
+  function startNextSeason(save) {
+    // Reset season keeping club and pack; apply league overrides when generating
+    delete save.season;
+    save.meta.updatedAt = nowIso();
+    ensureSeason(save);
+    // If club got relegated/promoted, adjust season league to override
+    const ov = save.world?.leagueOverrides?.[save.career.clubId];
+    if (ov) save.season.leagueId = ov;
+    // reset squad form modestly
+    if (save.squad?.players) save.squad.players.forEach(p => { p.form = clampInt((p.form||0) + randInt(-1,1), -5, 5); });
+    // reset extensions
+    ensureSeasonExtensions(save);
+  }
+
 
   function generateDoubleRoundRobin(teamIds) {
     // Circle method (single round)
@@ -1170,8 +1467,12 @@
       const userPos = rows.findIndex(x => x.id === save.career.clubId) + 1;
 
       const nextRoundMatches = save.season.rounds[r] || [];
+      const weekExtra = save.season.ext?.weekEvents?.[r] || { cupMatchIds: [], continentalMatchIds: [] };
+      const nextCup = (weekExtra.cupMatchIds||[]).map(id => findCupMatchById(save, id)).filter(Boolean);
+      const nextCont = (weekExtra.continentalMatchIds||[]).map(id => findContinentalMatchById(save, id)).filter(Boolean);
+
       const lastRoundIndex = Number.isFinite(save.season.lastRoundPlayed) ? save.season.lastRoundPlayed : -1;
-      const lastResults = Array.isArray(save.season.lastResults) ? save.season.lastResults : [];
+      const lastResults = Array.isArray(save.season.lastResultsAll) ? save.season.lastResultsAll : (Array.isArray(save.season.lastResults) ? save.season.lastResults : []);
 
       function resultBadge(m) {
         const isUser = (m.homeId === save.career.clubId || m.awayId === save.career.clubId);
@@ -1243,6 +1544,7 @@
             <div class="sep"></div>
             ${lastBlock}
             ${nextBlock}
+            ${renderExtraNextMatches(nextCup, nextCont, save)}
           </div>
         </div>
       `;
@@ -1253,7 +1555,10 @@
     return requireSave((save) => {
       ensureSystems(save);
       ensureSeason(save);
+      ensureSeasonExtensions(save);
+      seasonFinalizeIfEnded(save);
       const club = getClub(save.career.clubId);
+      const compView = save.ui?.compView || 'LEAGUE';
       const league = (state.packData?.competitions?.leagues || []).find(l => l.id === save.season.leagueId);
       const rows = sortTableRows(Object.values(save.season.table));
 
@@ -1292,17 +1597,24 @@
             <span class="badge">Rodada ${save.season.currentRound+1}</span>
           </div>
           <div class="card-body">
+            <div class="row" style="margin-bottom:10px">
+              <div style="min-width:220px">
+                <div class="label">Ver competição</div>
+                <select class="input" data-field="compView">
+                  <option value="LEAGUE" ${compView==='LEAGUE'?'selected':''}>Liga (Tabela)</option>
+                  <option value="CDB" ${compView==='CDB'?'selected':''}>Copa do Brasil</option>
+                  <option value="LIB" ${compView==='LIB'?'selected':''} ${save.season.ext?.continental?.competitionId==='LIBERTADORES'?'':'disabled'}>Libertadores</option>
+                  <option value="SULA" ${compView==='SULA'?'selected':''} ${save.season.ext?.continental?.competitionId==='SUDAMERICANA'?'':'disabled'}>Sul-Americana</option>
+                </select>
+              </div>
+              <div class="notice" style="flex:1">
+                Dica: por enquanto o jogo simula completo a <b>liga nacional</b>. Copa e Continental são MVP porém já entram no calendário do seu clube.
+              </div>
+            </div>
+
             <div class="notice">MVP: nesta versão, a temporada jogável é a Liga (tabela completa). Copas/continentais entram na próxima atualização.</div>
             <div class="sep"></div>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>#</th><th>Clube</th><th class="right">J</th><th class="right">V</th><th class="right">E</th><th class="right">D</th>
-                  <th class="right">GP</th><th class="right">GC</th><th class="right">SG</th><th class="right">Pts</th>
-                </tr>
-              </thead>
-              <tbody>${tableHtml}</tbody>
-            </table>
+            ${renderCompetitionsBody(save, compView, league, tableHtml)}
             <div class="sep"></div>
             <div class="row">
               <button class="btn btn-primary" data-go="/matches">Voltar aos Jogos</button>
@@ -1860,6 +2172,24 @@
       }
 
       // --- Jogos
+
+      // --- Próxima temporada
+      if (action === 'nextSeason') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          ensureSeason(save);
+          ensureSeasonExtensions(save);
+          seasonFinalizeIfEnded(save);
+          if (!save.season?.ext?.finalized) return;
+          startNextSeason(save);
+          save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+
       if (action === 'playNextRound') {
         el.addEventListener('click', () => {
           const save = activeSave();
@@ -1881,9 +2211,78 @@
             applyResultToTable(save.season.table, m.homeId, m.awayId, m.hg, m.ag);
           });
 
+
+          // Simula a rodada da Série B em background (para promoção/rebaixamento)
+          const b = save.season.ext?.otherLeagues?.BRA_SERIE_B;
+          if (b && Array.isArray(b.rounds) && b.currentRound < b.rounds.length) {
+            const bMatches = b.rounds[b.currentRound] || [];
+            bMatches.forEach(mm => {
+              if (mm.played) return;
+              const simB = simulateMatch(mm.homeId, mm.awayId, save);
+              mm.hg = simB.hg; mm.ag = simB.ag; mm.played = true;
+              applyResultToTable(b.table, mm.homeId, mm.awayId, mm.hg, mm.ag);
+            });
+            b.currentRound += 1;
+          }
+
+          // Simula eventos extras desta 'semana' (Copa do Brasil / Continental) somente do clube do usuário
+          const week = r;
+          const weekExtra = save.season.ext?.weekEvents?.[week] || { cupMatchIds: [], continentalMatchIds: [] };
+          const extraResults = [];
+
+          // Copa do Brasil
+          (weekExtra.cupMatchIds || []).forEach((id) => {
+            const cm = findCupMatchById(save, id);
+            if (!cm || cm.played) return;
+            const simC = simulateMatch(cm.homeId, cm.awayId, save);
+            cm.hg = simC.hg; cm.ag = simC.ag; cm.played = true;
+
+            // desempate simples em pênaltis se empatar
+            if (cm.hg === cm.ag) {
+              if (Math.random() < 0.5) cm.hg += 1; else cm.ag += 1;
+            }
+            extraResults.push({ ...cm });
+
+            // avança no bracket: define o vencedor e cria o confronto da próxima fase para o clube do usuário
+            const cup = save.season.ext?.cups?.BRA_COPA_DO_BRASIL;
+            if (cup) {
+              const winner = (cm.hg > cm.ag) ? cm.homeId : cm.awayId;
+              cup.eliminated[(winner === cm.homeId) ? cm.awayId : cm.homeId] = true;
+
+              const nextRound = cup.rounds[cm.roundIndex + 1];
+              if (nextRound) {
+                // coloca o vencedor numa vaga TBD da próxima fase
+                for (const nm of nextRound.matches) {
+                  if (nm.homeId === '__TBD__') { nm.homeId = winner; break; }
+                  if (nm.awayId === '__TBD__') { nm.awayId = winner; break; }
+                }
+              } else {
+                cup.winner = winner;
+              }
+            }
+          });
+
+          // Continental (fase de grupos) - atualiza tabela
+          (weekExtra.continentalMatchIds || []).forEach((id) => {
+            const gm = findContinentalMatchById(save, id);
+            if (!gm || gm.played) return;
+            const simG = simulateMatch(gm.homeId, gm.awayId, save);
+            gm.hg = simG.hg; gm.ag = simG.ag; gm.played = true;
+            extraResults.push({ ...gm });
+
+            const c = save.season.ext?.continental;
+            if (c && c.table) {
+              applyResultToTable(c.table, gm.homeId, gm.awayId, gm.hg, gm.ag);
+            }
+          });
+
+          // Guarda extras pra exibir junto dos resultados da semana
+          save.season.lastExtraResults = extraResults;
+
           // Guarda o resumo da rodada jogada (para exibir resultados)
           save.season.lastRoundPlayed = r;
           save.season.lastResults = (matches || []).map(m => ({ ...m }));
+          save.season.lastResultsAll = [...(save.season.lastResults || []), ...(save.season.lastExtraResults || [])];
 
           // receitas/ custos semanais ao jogar uma rodada
           const econ = state.packData?.rules?.economy || {};
@@ -1901,6 +2300,20 @@
           route();
         });
       }
+
+    // Seletor de competição (Competições)
+    document.querySelectorAll('[data-field="compView"]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const save = activeSave();
+        if (!save) return;
+        if (!save.ui) save.ui = {};
+        save.ui.compView = el.value || 'LEAGUE';
+        save.meta.updatedAt = nowIso();
+        writeSlot(state.settings.activeSlotId, save);
+        route();
+      });
+    });
+
     });
   }
 
@@ -1914,4 +2327,38 @@
   }
 
   boot();
-})();
+})()
+  function renderExtraNextMatches(nextCup, nextCont, save) {
+    const parts = [];
+    if (Array.isArray(nextCup) && nextCup.length) {
+      parts.push(`<div class="sep"></div><div class="badge">Copa do Brasil</div><div style="height:8px"></div>` + nextCup.map(m => matchItemFromObj(m, save)).join(''));
+    }
+    if (Array.isArray(nextCont) && nextCont.length) {
+      const name = save.season?.ext?.continental?.name || 'Continental';
+      parts.push(`<div class="sep"></div><div class="badge">${esc(name)}</div><div style="height:8px"></div>` + nextCont.map(m => matchItemFromObj(m, save)).join(''));
+    }
+    return parts.join('');
+  }
+
+  function matchItemFromObj(m, save) {
+    const hc = getClub(m.homeId) || (save.season?.ext?.continental?.table?.[m.homeId] || null);
+    const ac = getClub(m.awayId) || (save.season?.ext?.continental?.table?.[m.awayId] || null);
+    const score = m.played ? `<b style="font-size:16px">${m.hg} x ${m.ag}</b>` : `<span class="badge">Não jogado</span>`;
+    const isUser = (m.homeId === save.career.clubId || m.awayId === save.career.clubId);
+    const outline = isUser ? ' style="outline:1px solid rgba(34,197,94,.40)"' : '';
+    return `
+      <div class="item"${outline}>
+        <div class="item-left" style="display:flex; gap:10px; align-items:center;">
+          ${clubLogoHtml(m.homeId, 34)}
+          <div style="min-width:0;">
+            <div class="item-title">${esc(hc?.short || hc?.name || m.homeId)} <span class="small">vs</span> ${esc(ac?.short || ac?.name || m.awayId)}</div>
+            <div class="item-sub">${esc(m.compId || '')} • ${esc(m.stage || m.name || '')}</div>
+          </div>
+        </div>
+        <div class="item-right">
+          ${score}
+        </div>
+      </div>
+    `;
+  }
+;
