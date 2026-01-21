@@ -1,46 +1,119 @@
 {
-  "competitions": [
-    {
-      "id": "brasileirao",
-      "name": "Campeonato Brasileiro",
-      "type": "league",
-      "teams": [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8
-      ],
-      "rounds": 14,
-      "rules": {
-        "pointsWin": 3,
-        "pointsDraw": 1,
-        "pointsLoss": 0,
-        "relegation": 2,
-        "qualification": {
-          "libertadores": 2,
-          "sulamericana": 4
+  "meta": { "version": "1.0.0" },
+  "continents": {
+    "CONMEBOL": {
+      "libertadores": {
+        "id": "LIBERTADORES",
+        "format": "prelim_groups_knockout",
+        "preliminaryRounds": 3,
+        "groupStage": {
+          "groups": 8,
+          "teamsPerGroup": 4,
+          "matchdays": 6,
+          "advanceTop": 2,
+          "thirdToSudamericana": true
+        },
+        "knockout": {
+          "roundOf16": true,
+          "quarters": true,
+          "semis": true,
+          "final": { "legs": 1, "neutral": true }
+        }
+      },
+      "sudamericana": {
+        "id": "SUDAMERICANA",
+        "format": "groups_plus_playoff",
+        "groupStage": {
+          "groups": 8,
+          "teamsPerGroup": 4,
+          "matchdays": 6,
+          "advanceTop": 1
+        },
+        "playoffVsLibertadoresThird": {
+          "enabled": true,
+          "legs": 2,
+          "teamsFromLibertadoresThird": 8,
+          "teamsFromSudamericanaSecond": 8
+        },
+        "knockout": {
+          "roundOf16": true,
+          "quarters": true,
+          "semis": true,
+          "final": { "legs": 1, "neutral": true }
         }
       }
     },
-    {
-      "id": "copa_do_brasil",
-      "name": "Copa do Brasil",
-      "type": "cup",
-      "teams": [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8
-      ],
-      "rounds": 3
+    "UEFA": {
+      "champions": {
+        "id": "UCL",
+        "format": "league_phase_36",
+        "leaguePhase": {
+          "teams": 36,
+          "matchesPerTeam": 8,
+          "advanceTop8": true,
+          "playoffPositions": [9, 24]
+        },
+        "knockout": {
+          "roundOf16": true,
+          "quarters": true,
+          "semis": true,
+          "final": { "legs": 1, "neutral": true }
+        }
+      },
+      "europa": {
+        "id": "UEL",
+        "format": "league_phase_36",
+        "leaguePhase": {
+          "teams": 36,
+          "matchesPerTeam": 8,
+          "advanceTop8": true,
+          "playoffPositions": [9, 24]
+        },
+        "knockout": {
+          "roundOf16": true,
+          "quarters": true,
+          "semis": true,
+          "final": { "legs": 1, "neutral": true }
+        }
+      },
+      "conference": {
+        "id": "UECL",
+        "format": "league_phase_36",
+        "leaguePhase": {
+          "teams": 36,
+          "matchesPerTeam": 6,
+          "advanceTop8": true,
+          "playoffPositions": [9, 24]
+        },
+        "knockout": {
+          "roundOf16": true,
+          "quarters": true,
+          "semis": true,
+          "final": { "legs": 1, "neutral": true }
+        }
+      }
     }
-  ]
+  },
+  "world": {
+    "intercontinental": {
+      "modes": {
+        "CLASSIC": {
+          "description": "Libertadores x Champions, jogo único em estádio neutro no fim da temporada."
+        },
+        "FIFA_PHASES": {
+          "description": "Torneio eliminatório em fases com campeões continentais; final com UCL e Libertadores nas fases finais (simplificado)."
+        }
+      }
+    },
+    "clubWorldCup": {
+      "fifa2025": {
+        "enabled": true,
+        "teams": 32,
+        "format": "groups_plus_knockout",
+        "groups": { "count": 8, "teamsPerGroup": 4, "advanceTop": 2 },
+        "knockout": { "roundOf16": true, "quarters": true, "semis": true, "final": { "legs": 1 } },
+        "frequencyYears": 4
+      }
+    }
+  }
 }
