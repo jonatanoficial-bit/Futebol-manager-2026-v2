@@ -208,14 +208,34 @@
 
   /** Carrega lista de pacotes de /data/packs.json */
   async function loadPacks() {
+    const embedded = {
+      packs: [
+        {
+          id: "base_2025_2026",
+          name: "Base 2025/2026",
+          version: "1.0.0",
+          description: "Brasil Série A e B + Copa do Brasil (dados locais).",
+          path: "./data/base_2025_2026/manifest.json"
+        }
+      ]
+    };
+
     try {
-      // Usa urlOf para resolver o caminho do packs.json relativo ao local
       const res = await fetch(urlOf("./data/packs.json"), { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
       const json = await res.json();
-      state.packs = Array.isArray(json?.packs) ? json.packs : [];
-    } catch {
-      state.packs = [];
-      state.ui.error = "Falha ao carregar pacotes.";
+      const packs = Array.isArray(json?.packs) ? json.packs : [];
+      state.packs = packs.length ? packs : embedded.packs;
+    } catch (e) {
+      // Fallback: evita "Pacote Nenhum" mesmo se o host bloquear /data
+      state.packs = embedded.packs;
+      state.ui.error = null;
+    }
+
+    // Auto-seleciona pack se ainda não houver nenhum selecionado
+    if (!state.settings.selectedPackId && state.packs[0]) {
+      state.settings.selectedPackId = state.packs[0].id;
+      saveSettings();
     }
   }
 
@@ -2318,13 +2338,12 @@
   }
 
   /** Inicializa a aplicação */
-  async function boot() {
+  async async function boot() {
     ensureSlots();
     await loadPacks();
     await loadPackData();
-    if (!location.hash) location.hash = '/home';
+    if (!location.hash) location.hash = '#/home';
     route();
   }
-
-  boot();
+  boot().catch((e)=>{ console.error(e); const v=document.querySelector('#view'); if(v){ v.innerHTML = `<div class="card"><div class="card-header"><div><div class="card-title">Erro</div><div class="card-subtitle">Falha ao iniciar</div></div></div><div class="card-body"><div class="notice">${String(e&&e.message||e)}</div></div></div>`; } });
 })();

@@ -1,13 +1,44 @@
 {
-  "leagueRules": {
+  "universal": {
     "pointsWin": 3,
     "pointsDraw": 1,
     "pointsLoss": 0,
-    "tieBreakers": ["points", "wins", "goalDiff", "goalsFor", "headToHead", "fairPlay"]
+    "tiebreakersDefault": [
+      "points",
+      "goalDifference",
+      "goalsFor",
+      "wins",
+      "drawLots"
+    ]
   },
-  "brazilSerieA": {
-    "relegationSpots": 4,
-    "libertadoresSpots": 6,
-    "sudamericanaSpots": 6
+  "countries": {
+    "BRA": {
+      "leagues": {
+        "BRA_SERIE_A": {
+          "relegation": 4,
+          "continental": {
+            "libertadores": 4,
+            "sudamericana": 6
+          },
+          "tiebreakers": [
+            "points",
+            "goalDifference",
+            "goalsFor",
+            "wins",
+            "drawLots"
+          ]
+        },
+        "BRA_SERIE_B": {
+          "promotion": 4,
+          "tiebreakers": [
+            "points",
+            "goalDifference",
+            "goalsFor",
+            "wins",
+            "drawLots"
+          ]
+        }
+      }
+    }
   }
 }
