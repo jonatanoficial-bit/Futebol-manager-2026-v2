@@ -3,47 +3,37 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vale Futebol Manager 2026 - Premium</title>
-  <!-- Estilos principais -->
+  <title>Vale Futebol Manager 2026</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <!-- Tela de abertura com logo da produtora -->
-  <div class="splash" id="splash">
-    <div class="splash-logo">
-      <img src="./assets/images/vale_games_logo.png" alt="Vale Games" />
-    </div>
+  <div id="splash" style="position:fixed; inset:0; display:grid; place-items:center; background:#0b0f14; z-index:9999;">
+    <img src="./assets/images/vale_games_logo.png" alt="Vale Games" style="width:140px; height:140px; object-fit:contain; opacity:.95;" />
   </div>
 
-  <!-- Estrutura principal da aplicação -->
   <div class="app-shell">
-    <header class="topbar">
+    <div class="topbar">
       <div class="brand">
         <div class="logo-badge">VFM</div>
-        <div class="brand-text">
+        <div>
           <div class="brand-title">Vale Futebol Manager 2026</div>
           <div class="brand-subtitle">Carreira • Dados • Admin</div>
         </div>
       </div>
-      <div class="topbar-actions">
-        <button class="btn btn-ghost" type="button" onclick="location.hash='#/home'">
-          Início
-        </button>
-      </div>
-    </header>
+      <button class="btn" data-go="/home" type="button">Início</button>
+    </div>
+
     <main class="main">
-      <div id="view" class="view">
-        <!-- O conteúdo será renderizado dinamicamente pelo app.js -->
+      <div class="view" id="view">
+        <!-- Conteúdo renderizado pelo app.js -->
       </div>
     </main>
-    <footer class="footer">
-      <span>© Vale Games</span>
-      <span class="dot">•</span>
-      <span>Offline • LocalStorage</span>
-    </footer>
+
+    <div class="footer">
+      <span>© Vale Games</span><span class="dot">•</span><span>Offline</span><span class="dot">•</span><span>LocalStorage</span>
+    </div>
   </div>
 
-  <!-- Lógica principal da aplicação -->
   <script src="./app.js"></script>
 </body>
 </html>

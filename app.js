@@ -208,34 +208,14 @@
 
   /** Carrega lista de pacotes de /data/packs.json */
   async function loadPacks() {
-    const embedded = {
-      packs: [
-        {
-          id: "base_2025_2026",
-          name: "Base 2025/2026",
-          version: "1.0.0",
-          description: "Brasil Série A e B + Copa do Brasil (dados locais).",
-          path: "./data/base_2025_2026/manifest.json"
-        }
-      ]
-    };
-
     try {
+      // Usa urlOf para resolver o caminho do packs.json relativo ao local
       const res = await fetch(urlOf("./data/packs.json"), { cache: "no-store" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
       const json = await res.json();
-      const packs = Array.isArray(json?.packs) ? json.packs : [];
-      state.packs = packs.length ? packs : embedded.packs;
-    } catch (e) {
-      // Fallback: evita "Pacote Nenhum" mesmo se o host bloquear /data
-      state.packs = embedded.packs;
-      state.ui.error = null;
-    }
-
-    // Auto-seleciona pack se ainda não houver nenhum selecionado
-    if (!state.settings.selectedPackId && state.packs[0]) {
-      state.settings.selectedPackId = state.packs[0].id;
-      saveSettings();
+      state.packs = Array.isArray(json?.packs) ? json.packs : [];
+    } catch {
+      state.packs = [];
+      state.ui.error = "Falha ao carregar pacotes.";
     }
   }
 
@@ -2338,12 +2318,47 @@
   }
 
   /** Inicializa a aplicação */
-  async async function boot() {
+  async function boot() {
     ensureSlots();
     await loadPacks();
     await loadPackData();
-    if (!location.hash) location.hash = '#/home';
+    if (!location.hash) location.hash = '/home';
     route();
   }
-  boot().catch((e)=>{ console.error(e); const v=document.querySelector('#view'); if(v){ v.innerHTML = `<div class="card"><div class="card-header"><div><div class="card-title">Erro</div><div class="card-subtitle">Falha ao iniciar</div></div></div><div class="card-body"><div class="notice">${String(e&&e.message||e)}</div></div></div>`; } });
-})();
+
+  boot();
+})()
+  function renderExtraNextMatches(nextCup, nextCont, save) {
+    const parts = [];
+    if (Array.isArray(nextCup) && nextCup.length) {
+      parts.push(`<div class="sep"></div><div class="badge">Copa do Brasil</div><div style="height:8px"></div>` + nextCup.map(m => matchItemFromObj(m, save)).join(''));
+    }
+    if (Array.isArray(nextCont) && nextCont.length) {
+      const name = save.season?.ext?.continental?.name || 'Continental';
+      parts.push(`<div class="sep"></div><div class="badge">${esc(name)}</div><div style="height:8px"></div>` + nextCont.map(m => matchItemFromObj(m, save)).join(''));
+    }
+    return parts.join('');
+  }
+
+  function matchItemFromObj(m, save) {
+    const hc = getClub(m.homeId) || (save.season?.ext?.continental?.table?.[m.homeId] || null);
+    const ac = getClub(m.awayId) || (save.season?.ext?.continental?.table?.[m.awayId] || null);
+    const score = m.played ? `<b style="font-size:16px">${m.hg} x ${m.ag}</b>` : `<span class="badge">Não jogado</span>`;
+    const isUser = (m.homeId === save.career.clubId || m.awayId === save.career.clubId);
+    const outline = isUser ? ' style="outline:1px solid rgba(34,197,94,.40)"' : '';
+    return `
+      <div class="item"${outline}>
+        <div class="item-left" style="display:flex; gap:10px; align-items:center;">
+          ${clubLogoHtml(m.homeId, 34)}
+          <div style="min-width:0;">
+            <div class="item-title">${esc(hc?.short || hc?.name || m.homeId)} <span class="small">vs</span> ${esc(ac?.short || ac?.name || m.awayId)}</div>
+            <div class="item-sub">${esc(m.compId || '')} • ${esc(m.stage || m.name || '')}</div>
+          </div>
+        </div>
+        <div class="item-right">
+          ${score}
+        </div>
+      </div>
+    `;
+  }
+;
