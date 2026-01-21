@@ -300,6 +300,127 @@
   // Ouve mudança de hash para atualizar a rota
   window.addEventListener("hashchange", route);
 
+  // -----------------------------
+  // Delegação global de cliques (garante botões sempre funcionais)
+  // -----------------------------
+  document.addEventListener('click', (ev) => {
+    const el = ev.target?.closest?.('[data-go],[data-action]');
+    if (!el) return;
+
+    const goTo = el.getAttribute('data-go');
+    if (goTo) {
+      ev.preventDefault();
+      location.hash = goTo;
+      return;
+    }
+
+    // Para data-action, o bindEvents continua existindo, mas isso evita "botão morto"
+    // caso algum render tenha falhado em vincular eventos.
+    const action = el.getAttribute('data-action');
+    if (!action) return;
+
+    if (action === 'playNextRound') {
+      ev.preventDefault();
+      const save = activeSave();
+      if (!save) return;
+      ensureSystems(save);
+      ensureSeason(save);
+      ensureSeasonExtensions(save);
+
+      const r = save.season.currentRound;
+      const rounds = save.season.rounds || [];
+      if (r >= rounds.length) return;
+
+      const matches = rounds[r] || [];
+      matches.forEach(m => {
+        if (m.played) return;
+        const sim = simulateMatch(m.homeId, m.awayId, save);
+        m.hg = sim.hg; m.ag = sim.ag; m.played = true;
+        m.xgH = sim.lamHome; m.xgA = sim.lamAway;
+        applyResultToTable(save.season.table, m.homeId, m.awayId, m.hg, m.ag);
+      });
+
+      // Extra (Série B + Copa + Continental) se existir
+      const b = save.season.ext?.otherLeagues?.BRA_SERIE_B;
+      if (b && Array.isArray(b.rounds) && b.currentRound < b.rounds.length) {
+        const bMatches = b.rounds[b.currentRound] || [];
+        bMatches.forEach(mm => {
+          if (mm.played) return;
+          const simB = simulateMatch(mm.homeId, mm.awayId, save);
+          mm.hg = simB.hg; mm.ag = simB.ag; mm.played = true;
+          applyResultToTable(b.table, mm.homeId, mm.awayId, mm.hg, mm.ag);
+        });
+        b.currentRound += 1;
+      }
+
+      const weekExtra = save.season.ext?.weekEvents?.[r] || { cupMatchIds: [], continentalMatchIds: [] };
+      const extraResults = [];
+
+      (weekExtra.cupMatchIds || []).forEach((id) => {
+        const cm = findCupMatchById(save, id);
+        if (!cm || cm.played) return;
+        const simC = simulateMatch(cm.homeId, cm.awayId, save);
+        cm.hg = simC.hg; cm.ag = simC.ag; cm.played = true;
+        if (cm.hg === cm.ag) { if (Math.random() < 0.5) cm.hg += 1; else cm.ag += 1; }
+        extraResults.push({ ...cm });
+
+        const cup = save.season.ext?.cups?.BRA_COPA_DO_BRASIL;
+        if (cup) {
+          const winner = (cm.hg > cm.ag) ? cm.homeId : cm.awayId;
+          cup.eliminated[(winner === cm.homeId) ? cm.awayId : cm.homeId] = true;
+
+          const nextRound = cup.rounds[cm.roundIndex + 1];
+          if (nextRound) {
+            for (const nm of nextRound.matches) {
+              if (nm.homeId === '__TBD__') { nm.homeId = winner; break; }
+              if (nm.awayId === '__TBD__') { nm.awayId = winner; break; }
+            }
+          } else {
+            cup.winner = winner;
+          }
+        }
+      });
+
+      (weekExtra.continentalMatchIds || []).forEach((id) => {
+        const gm = findContinentalMatchById(save, id);
+        if (!gm || gm.played) return;
+        const simG = simulateMatch(gm.homeId, gm.awayId, save);
+        gm.hg = simG.hg; gm.ag = simG.ag; gm.played = true;
+        extraResults.push({ ...gm });
+        const c = save.season.ext?.continental;
+        if (c && c.table) applyResultToTable(c.table, gm.homeId, gm.awayId, gm.hg, gm.ag);
+      });
+
+      save.season.lastResults = (matches || []).map(m => ({ ...m }));
+      save.season.lastExtraResults = extraResults;
+      save.season.lastResultsAll = [...(save.season.lastResults || []), ...(save.season.lastExtraResults || [])];
+      save.season.lastRoundPlayed = r;
+      save.season.currentRound += 1;
+
+      seasonFinalizeIfEnded(save);
+      save.meta.updatedAt = nowIso();
+      writeSlot(state.settings.activeSlotId, save);
+      route();
+    }
+
+    if (action === 'nextSeason') {
+      ev.preventDefault();
+      const save = activeSave();
+      if (!save) return;
+      ensureSystems(save);
+      ensureSeason(save);
+      ensureSeasonExtensions(save);
+      seasonFinalizeIfEnded(save);
+      if (!save.season?.ext?.finalized) return;
+      startNextSeason(save);
+      save.meta.updatedAt = nowIso();
+      writeSlot(state.settings.activeSlotId, save);
+      route();
+    }
+  });
+
+
+
   /** Codifica string em HTML seguro */
   function esc(s) {
     return String(s ?? "")
@@ -1458,6 +1579,8 @@
     return requireSave((save) => {
       ensureSystems(save);
       ensureSeason(save);
+      ensureSeasonExtensions(save);
+      seasonFinalizeIfEnded(save);
       const club = getClub(save.career.clubId);
       const league = (state.packData?.competitions?.leagues || []).find(l => l.id === save.season.leagueId);
       const totalRounds = save.season.rounds.length;
