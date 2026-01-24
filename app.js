@@ -17,9 +17,15 @@
     if (splash) {
       // pequeno atraso para mostrar a animação
       setTimeout(() => {
-        splash.classList.add("hidden");
-      }, 1500);
+        splash.style.display = 'none';
+        splash.setAttribute('aria-hidden','true');}, 600);
     }
+  });
+
+  // Failsafe: garante que o splash some mesmo em hosts com cache agressivo
+  window.addEventListener("load", () => {
+    const splash = document.getElementById("splash");
+    if (splash) splash.style.display = "none";
   });
 
   /** Seleciona um elemento no DOM */
@@ -1248,11 +1254,9 @@
 
   function seasonFinalizeIfEnded(save) {
     ensureSeason(save);
-      ensureSeasonExtensions(save);
-      seasonFinalizeIfEnded(save);
     ensureSeasonExtensions(save);
 
-    const total = save.season.rounds.length;
+const total = save.season.rounds.length;
     if (save.season.currentRound < total) return false;
 
     if (!save.history) save.history = {};
@@ -2327,7 +2331,6 @@
   }
 
   boot();
-})()
   function renderExtraNextMatches(nextCup, nextCont, save) {
     const parts = [];
     if (Array.isArray(nextCup) && nextCup.length) {
@@ -2362,3 +2365,4 @@
     `;
   }
 ;
+})();
