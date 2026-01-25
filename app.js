@@ -17,16 +17,9 @@
     if (splash) {
       // pequeno atraso para mostrar a animação
       setTimeout(() => {
-        splash.style.display = 'none';
-        splash.setAttribute('aria-hidden','true');}, 600);
+        splash.classList.add("hidden");
+      }, 1500);
     }
-  });
-  });
-
-  // Failsafe: garante que o splash some mesmo em hosts com cache agressivo
-  window.addEventListener("load", () => {
-    const splash = document.getElementById("splash");
-    if (splash) splash.style.display = "none";
   });
 
   /** Seleciona um elemento no DOM */
@@ -1005,9 +998,8 @@
     if (save.season.id && save.season.leagueId && Array.isArray(save.season.rounds)) return;
 
     const club = getClub(save.career.clubId);
-    const baseLeagueId = club?.leagueId || 'BRA_SERIE_A';
-    const leagueId = (save.world?.leagueOverrides?.[save.career.clubId]) || baseLeagueId;
-    const clubs = (state.packData?.clubs?.clubs || []).filter(c => ((save.world?.leagueOverrides?.[c.id]) || c.leagueId) === leagueId);
+    const leagueId = club?.leagueId || 'BRA_SERIE_A';
+    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === leagueId);
     const clubIds = clubs.map(c => c.id);
     const rounds = generateDoubleRoundRobin(clubIds);
     const table = buildEmptyTable(clubs);
@@ -1020,302 +1012,6 @@
       table
     };
   }
-
-
-  // -----------------------------
-  // Season Extensions (Cup + Continental + Promotion/Relegation)
-  // -----------------------------
-  function ensureSeasonExtensions(save) {
-    if (!save.season) return;
-    if (!save.season.ext) save.season.ext = {};
-    const ext = save.season.ext;
-    if (ext.initialized) return;
-
-    const club = getClub(save.career.clubId);
-    const leagueId = save.season.leagueId || club?.leagueId || 'BRA_SERIE_A';
-
-    // Build Serie B simulation in background (for promotion/relegation)
-    if (!ext.otherLeagues) ext.otherLeagues = {};
-    if (!ext.otherLeagues.BRA_SERIE_B) {
-      const bClubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === 'BRA_SERIE_B');
-      const bIds = bClubs.map(c => c.id);
-      if (bIds.length >= 2) {
-        ext.otherLeagues.BRA_SERIE_B = {
-          leagueId: 'BRA_SERIE_B',
-          rounds: generateDoubleRoundRobin(bIds),
-          currentRound: 0,
-          table: buildEmptyTable(bClubs)
-        };
-      }
-    }
-
-    // Decide continental for first season (if no history): based on club ranking by overall in its league
-    if (!ext.continental) ext.continental = { qualified: null, competitionId: null, group: null, table: null, matchesByWeek: {} };
-    if (!ext.continental.qualified) {
-      ext.continental.qualified = decideInitialContinentalQualification(save);
-      ext.continental.competitionId = ext.continental.qualified; // 'LIBERTADORES' | 'SUDAMERICANA' | null
-    }
-
-    // Build Copa do Brasil (simplified) if Brazil league
-    if (!ext.cups) ext.cups = {};
-    if (!ext.cups.BRA_COPA_DO_BRASIL && (leagueId === 'BRA_SERIE_A' || leagueId === 'BRA_SERIE_B')) {
-      ext.cups.BRA_COPA_DO_BRASIL = buildCopaDoBrasil(save);
-    }
-
-    // Build continental schedule only for user's team (lightweight)
-    if (ext.continental.competitionId && !ext.continental.group) {
-      buildContinentalForUser(save, ext.continental.competitionId);
-    }
-
-    // Precompute "events per league round" to show in calendar and allow sim
-    ext.weekEvents = ext.weekEvents || {}; // { [weekIndex]: { cupMatchId?, continentalMatchIds? } }
-    wireCupMatchesIntoWeeks(save);
-    wireContinentalIntoWeeks(save);
-
-    ext.initialized = true;
-  }
-
-  function decideInitialContinentalQualification(save) {
-    // Only CONMEBOL for now (packs focam Brasil).
-    // Se já existir histórico de vagas, respeita.
-    const hist = save.history?.lastSeasonQualification;
-    if (hist && (hist === 'LIBERTADORES' || hist === 'SUDAMERICANA')) return hist;
-
-    const club = getClub(save.career.clubId);
-    const leagueId = club?.leagueId || save.season.leagueId || 'BRA_SERIE_A';
-    if (leagueId !== 'BRA_SERIE_A') return null;
-
-    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === 'BRA_SERIE_A');
-    const sorted = [...clubs].sort((a,b) => (b.overall||0)-(a.overall||0));
-    const pos = sorted.findIndex(c => c.id === save.career.clubId) + 1;
-    if (pos >= 1 && pos <= 4) return 'LIBERTADORES';
-    if (pos >= 5 && pos <= 10) return 'SUDAMERICANA';
-    return null;
-  }
-
-  function buildCopaDoBrasil(save) {
-    const all = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === 'BRA_SERIE_A' || c.leagueId === 'BRA_SERIE_B');
-    // pick 32 teams, ensure user's club is included
-    const userId = save.career.clubId;
-    const pool = all.map(c => c.id).filter(id => id !== userId);
-    shuffleInPlace(pool);
-    const teams = [userId, ...pool].slice(0, 32);
-    const bracket = {
-      id: 'BRA_COPA_DO_BRASIL',
-      name: 'Copa do Brasil',
-      roundNames: ['32-avos','16-avos','Oitavas','Quartas','Semifinal','Final'],
-      rounds: [],
-      winner: null,
-      eliminated: {}
-    };
-
-    // create rounds single match (simplified)
-    let currentTeams = teams;
-    for (let r = 0; r < bracket.roundNames.length; r++) {
-      const matches = [];
-      for (let i = 0; i < currentTeams.length; i += 2) {
-        const homeId = currentTeams[i];
-        const awayId = currentTeams[i+1];
-        if (!awayId) continue;
-        matches.push({ id: `CDB_${r}_${i/2}`, compId:'BRA_COPA_DO_BRASIL', roundIndex:r, homeId, awayId, played:false, hg:0, ag:0 });
-      }
-      bracket.rounds.push({ name: bracket.roundNames[r], matches });
-      // next teams determined after playing, but we can pre-fill placeholders
-      currentTeams = new Array(Math.ceil(currentTeams.length/2)).fill('__TBD__');
-    }
-    return bracket;
-  }
-
-  function buildContinentalForUser(save, compId) {
-    const ext = save.season.ext;
-    const userId = save.career.clubId;
-    const club = getClub(userId);
-    const name = compId === 'LIBERTADORES' ? 'CONMEBOL Libertadores' : 'CONMEBOL Sul-Americana';
-
-    // generate 3 generic opponents (virtual) to avoid needing full DB
-    const opps = [
-      { id: `${compId}_V1`, name: 'Club Atlético Norte', short: 'CAN', overall: clampInt((club?.overall||70)-2, 55, 85) },
-      { id: `${compId}_V2`, name: 'Deportivo Central', short: 'DCE', overall: clampInt((club?.overall||70)-4, 55, 85) },
-      { id: `${compId}_V3`, name: 'Sporting del Sur', short: 'SDS', overall: clampInt((club?.overall||70)-1, 55, 85) }
-    ];
-
-    ext.continental.group = {
-      id: 'G1',
-      name: 'Grupo A',
-      teams: [userId, ...opps.map(o => o.id)]
-    };
-
-    // standings table for group
-    ext.continental.table = {};
-    ext.continental.table[userId] = { id:userId, name: club?.name||userId, P:0, W:0, D:0, L:0, GF:0, GA:0, GD:0, Pts:0 };
-    opps.forEach(o => {
-      ext.continental.table[o.id] = { id:o.id, name:o.name, P:0, W:0, D:0, L:0, GF:0, GA:0, GD:0, Pts:0, virtual:true, short:o.short, overall:o.overall };
-    });
-
-    // create 6 matchdays (double round robin among 4 teams but only simulate user's matches; other matches not needed)
-    // We'll schedule user's matches across 6 weeks spread out
-    const matchdays = [];
-    const oppIds = opps.map(o => o.id);
-    // 3 opponents, play each twice
-    const pairings = [
-      { home:userId, away: oppIds[0] },
-      { home:oppIds[1], away: userId },
-      { home:userId, away: oppIds[2] },
-      { home:oppIds[0], away: userId },
-      { home:userId, away: oppIds[1] },
-      { home:oppIds[2], away: userId }
-    ];
-    pairings.forEach((p, i) => {
-      matchdays.push({ id:`${compId}_MD${i+1}`, compId, stage:'GROUP', matchday:i+1, homeId:p.home, awayId:p.away, played:false, hg:0, ag:0 });
-    });
-
-    // place these matches later via wireContinentalIntoWeeks
-    ext.continental.matches = matchdays;
-    ext.continental.name = name;
-  }
-
-  function wireCupMatchesIntoWeeks(save) {
-    const ext = save.season.ext;
-    const cup = ext.cups?.BRA_COPA_DO_BRASIL;
-    if (!cup) return;
-    if (!ext.weekEvents) ext.weekEvents = {};
-
-    // Map cup rounds into specific league rounds (weeks) to interleave:
-    // Round of 32: week 3, 16: week 8, 8: week 13, QF: week 18, SF: week 25, Final: week 33
-    const mapWeeks = [2,7,12,17,24,32]; // 0-based
-    cup.rounds.forEach((r, idx) => {
-      const w = mapWeeks[idx] ?? (idx*5);
-      if (!ext.weekEvents[w]) ext.weekEvents[w] = { cupMatchIds: [], continentalMatchIds: [] };
-      // Find user's match only, keep lightweight
-      const userId = save.career.clubId;
-      const m = r.matches.find(x => x.homeId === userId || x.awayId === userId);
-      if (m) ext.weekEvents[w].cupMatchIds.push(m.id);
-    });
-  }
-
-  function wireContinentalIntoWeeks(save) {
-    const ext = save.season.ext;
-    if (!ext.continental?.matches || !ext.continental?.competitionId) return;
-    if (!ext.weekEvents) ext.weekEvents = {};
-
-    // Spread 6 matchdays through season: weeks 4,6,10,14,20,28 (0-based)
-    const weeks = [3,5,9,13,19,27];
-    ext.continental.matches.forEach((m, idx) => {
-      const w = weeks[idx] ?? (idx*4);
-      if (!ext.weekEvents[w]) ext.weekEvents[w] = { cupMatchIds: [], continentalMatchIds: [] };
-      ext.weekEvents[w].continentalMatchIds.push(m.id);
-      // Also index by week for quick lookup
-      ext.continental.matchesByWeek[w] = ext.continental.matchesByWeek[w] || [];
-      ext.continental.matchesByWeek[w].push(m.id);
-    });
-  }
-
-  function shuffleInPlace(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
-    }
-    return arr;
-  }
-
-  function findCupMatchById(save, id) {
-    const cup = save.season?.ext?.cups?.BRA_COPA_DO_BRASIL;
-    if (!cup) return null;
-    for (const r of cup.rounds) {
-      const m = r.matches.find(x => x.id === id);
-      if (m) return m;
-    }
-    return null;
-  }
-
-  function findContinentalMatchById(save, id) {
-    const c = save.season?.ext?.continental;
-    if (!c || !Array.isArray(c.matches)) return null;
-    return c.matches.find(x => x.id === id) || null;
-  }
-
-  function applyLeagueRulesSorting(rows, leagueId) {
-    // Try to use rules.json if available; fallback to default.
-    const rules = state.packData?.rules || {};
-    const tbs = rules?.countries?.BRA?.leagues?.[leagueId]?.tiebreakers || rules?.universal?.tiebreakersDefault;
-    const order = Array.isArray(tbs) ? tbs : ['points','goalDifference','goalsFor'];
-    return rows.sort((a,b) => {
-      for (const k of order) {
-        if (k === 'points' && b.Pts !== a.Pts) return b.Pts - a.Pts;
-        if (k === 'wins' && b.W !== a.W) return b.W - a.W;
-        if (k === 'goalDifference' && b.GD !== a.GD) return b.GD - a.GD;
-        if (k === 'goalsFor' && b.GF !== a.GF) return b.GF - a.GF;
-        if (k === 'headToHead') continue;
-        if (k === 'fairPlay') continue;
-        if (k === 'drawLots') continue;
-      }
-      return a.name.localeCompare(b.name);
-    });
-  }
-
-  function seasonFinalizeIfEnded(save) {
-    ensureSeason(save);
-      ensureSeasonExtensions(save);
-      seasonFinalizeIfEnded(save);
-    ensureSeasonExtensions(save);
-
-    const total = save.season.rounds.length;
-    if (save.season.currentRound < total) return false;
-
-    if (!save.history) save.history = {};
-    if (!save.history.seasons) save.history.seasons = [];
-    if (save.season.ext?.finalized) return true;
-
-    // Compute final tables Serie A and Serie B (background)
-    const aRows = applyLeagueRulesSorting(Object.values(save.season.table), 'BRA_SERIE_A');
-    const bObj = save.season.ext?.otherLeagues?.BRA_SERIE_B;
-    const bRows = bObj ? applyLeagueRulesSorting(Object.values(bObj.table), 'BRA_SERIE_B') : [];
-
-    const relegated = aRows.slice(-4).map(x => x.id);
-    const promoted = bRows.slice(0,4).map(x => x.id);
-
-    save.history.seasons.push({
-      seasonId: save.season.id,
-      leagueId: save.season.leagueId,
-      champion: aRows[0]?.id || null,
-      relegated,
-      promoted,
-      endedAt: nowIso()
-    });
-
-    // Store qualification for next season (based on positions)
-    const userPos = aRows.findIndex(x => x.id === save.career.clubId) + 1;
-    let qual = null;
-    if (save.season.leagueId === 'BRA_SERIE_A') {
-      if (userPos >= 1 && userPos <= 4) qual = 'LIBERTADORES';
-      else if (userPos >= 5 && userPos <= 10) qual = 'SUDAMERICANA';
-    }
-    save.history.lastSeasonQualification = qual;
-
-    // Apply league overrides for next season only (does not touch base data)
-    if (!save.world) save.world = {};
-    if (!save.world.leagueOverrides) save.world.leagueOverrides = {};
-    relegated.forEach(id => save.world.leagueOverrides[id] = 'BRA_SERIE_B');
-    promoted.forEach(id => save.world.leagueOverrides[id] = 'BRA_SERIE_A');
-
-    save.season.ext.finalized = true;
-    return true;
-  }
-
-  function startNextSeason(save) {
-    // Reset season keeping club and pack; apply league overrides when generating
-    delete save.season;
-    save.meta.updatedAt = nowIso();
-    ensureSeason(save);
-    // If club got relegated/promoted, adjust season league to override
-    const ov = save.world?.leagueOverrides?.[save.career.clubId];
-    if (ov) save.season.leagueId = ov;
-    // reset squad form modestly
-    if (save.squad?.players) save.squad.players.forEach(p => { p.form = clampInt((p.form||0) + randInt(-1,1), -5, 5); });
-    // reset extensions
-    ensureSeasonExtensions(save);
-  }
-
 
   function generateDoubleRoundRobin(teamIds) {
     // Circle method (single round)
@@ -1461,88 +1157,7 @@
     else { home.D += 1; away.D += 1; home.Pts += 1; away.Pts += 1; }
   }
 
-  
-  function renderUpcomingCalendar(save) {
-    // Mostra as próximas semanas (liga + eventos extras) focando no clube do usuário.
-    try {
-      const clubId = save.career.clubId;
-      const totalRounds = save.season.rounds.length;
-      const start = Math.max(0, save.season.currentRound);
-      const weeksToShow = 8;
-      const items = [];
-
-      for (let w = start; w < Math.min(totalRounds, start + weeksToShow); w++) {
-        const leagueMatches = (save.season.rounds[w] || []).filter(m => (m.homeId === clubId || m.awayId === clubId));
-        const extra = save.season.ext?.weekEvents?.[w] || { cupMatchIds: [], continentalMatchIds: [] };
-        const cupMatches = (extra.cupMatchIds || []).map(id => findCupMatchById(save, id)).filter(m => m && (m.homeId === clubId || m.awayId === clubId));
-        const contMatches = (extra.continentalMatchIds || []).map(id => findContinentalMatchById(save, id)).filter(m => m && (m.homeId === clubId || m.awayId === clubId));
-
-        const parts = [];
-        leagueMatches.forEach(m => parts.push({ ...m, compLabel: 'Liga', week: w }));
-        cupMatches.forEach(m => parts.push({ ...m, compLabel: 'Copa do Brasil', week: w }));
-        contMatches.forEach(m => parts.push({ ...m, compLabel: (save.season.ext?.continental?.name || 'Continental'), week: w }));
-
-        if (!parts.length) continue;
-
-        const list = parts.map(m => {
-          const hc = getClub(m.homeId);
-          const ac = getClub(m.awayId);
-          const score = m.played ? `<b>${m.hg} x ${m.ag}</b>` : `<span class="badge">A jogar</span>`;
-          return `
-            <div class="item" style="padding:10px;">
-              <div class="item-left" style="display:flex; gap:10px; align-items:center;">
-                ${clubLogoHtml(m.homeId, 28)}
-                <div style="min-width:0;">
-                  <div class="item-title">${esc(hc?.short || hc?.name || m.homeId)} <span class="small">vs</span> ${esc(ac?.short || ac?.name || m.awayId)}</div>
-                  <div class="item-sub">${esc(m.compLabel)} • Semana ${m.week+1}</div>
-                </div>
-                ${clubLogoHtml(m.awayId, 28)}
-              </div>
-              <div class="item-right">${score}</div>
-            </div>
-          `;
-        }).join('');
-
-        items.push(`
-          <div class="card" style="margin-top:12px;">
-            <div class="card-header">
-              <div>
-                <div class="card-title">Agenda da Semana ${w+1}</div>
-                <div class="card-subtitle">Liga + Copas/Continentais do seu clube</div>
-              </div>
-              <span class="badge">W${w+1}</span>
-            </div>
-            <div class="card-body"><div class="list">${list}</div></div>
-          </div>
-        `);
-      }
-
-      if (!items.length) {
-        return `<div class="notice">Sem jogos futuros encontrados para o seu clube.</div>`;
-      }
-
-      return `
-        <div class="sep"></div>
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Calendário Completo (Próximas Semanas)</div>
-              <div class="card-subtitle">Inclui Liga + Copa do Brasil + Continental (quando aplicável)</div>
-            </div>
-            <span class="badge">Preview</span>
-          </div>
-          <div class="card-body">
-            <div class="notice">MVP: a simulação completa é da Liga. Copas/Continentais são simuladas apenas quando caem na sua semana.</div>
-            ${items.join('')}
-          </div>
-        </div>
-      `;
-    } catch (e) {
-      return `<div class="notice">Não foi possível montar o calendário: ${esc(e?.message || e)}</div>`;
-    }
-  }
-
-function viewMatches() {
+  function viewMatches() {
     return requireSave((save) => {
       ensureSystems(save);
       ensureSeason(save);
@@ -1555,12 +1170,8 @@ function viewMatches() {
       const userPos = rows.findIndex(x => x.id === save.career.clubId) + 1;
 
       const nextRoundMatches = save.season.rounds[r] || [];
-      const weekExtra = save.season.ext?.weekEvents?.[r] || { cupMatchIds: [], continentalMatchIds: [] };
-      const nextCup = (weekExtra.cupMatchIds||[]).map(id => findCupMatchById(save, id)).filter(Boolean);
-      const nextCont = (weekExtra.continentalMatchIds||[]).map(id => findContinentalMatchById(save, id)).filter(Boolean);
-
       const lastRoundIndex = Number.isFinite(save.season.lastRoundPlayed) ? save.season.lastRoundPlayed : -1;
-      const lastResults = Array.isArray(save.season.lastResultsAll) ? save.season.lastResultsAll : (Array.isArray(save.season.lastResults) ? save.season.lastResults : []);
+      const lastResults = Array.isArray(save.season.lastResults) ? save.season.lastResults : [];
 
       function resultBadge(m) {
         const isUser = (m.homeId === save.career.clubId || m.awayId === save.career.clubId);
@@ -1632,9 +1243,6 @@ function viewMatches() {
             <div class="sep"></div>
             ${lastBlock}
             ${nextBlock}
-            ${renderUpcomingCalendar(save)}
-
-            ${renderExtraNextMatches(nextCup, nextCont, save)}
           </div>
         </div>
       `;
@@ -1645,10 +1253,7 @@ function viewMatches() {
     return requireSave((save) => {
       ensureSystems(save);
       ensureSeason(save);
-      ensureSeasonExtensions(save);
-      seasonFinalizeIfEnded(save);
       const club = getClub(save.career.clubId);
-      const compView = save.ui?.compView || 'LEAGUE';
       const league = (state.packData?.competitions?.leagues || []).find(l => l.id === save.season.leagueId);
       const rows = sortTableRows(Object.values(save.season.table));
 
@@ -1687,24 +1292,17 @@ function viewMatches() {
             <span class="badge">Rodada ${save.season.currentRound+1}</span>
           </div>
           <div class="card-body">
-            <div class="row" style="margin-bottom:10px">
-              <div style="min-width:220px">
-                <div class="label">Ver competição</div>
-                <select class="input" data-field="compView">
-                  <option value="LEAGUE" ${compView==='LEAGUE'?'selected':''}>Liga (Tabela)</option>
-                  <option value="CDB" ${compView==='CDB'?'selected':''}>Copa do Brasil</option>
-                  <option value="LIB" ${compView==='LIB'?'selected':''} ${save.season.ext?.continental?.competitionId==='LIBERTADORES'?'':'disabled'}>Libertadores</option>
-                  <option value="SULA" ${compView==='SULA'?'selected':''} ${save.season.ext?.continental?.competitionId==='SUDAMERICANA'?'':'disabled'}>Sul-Americana</option>
-                </select>
-              </div>
-              <div class="notice" style="flex:1">
-                Dica: por enquanto o jogo simula completo a <b>liga nacional</b>. Copa e Continental são MVP porém já entram no calendário do seu clube.
-              </div>
-            </div>
-
             <div class="notice">MVP: nesta versão, a temporada jogável é a Liga (tabela completa). Copas/continentais entram na próxima atualização.</div>
             <div class="sep"></div>
-            ${renderCompetitionsBody(save, compView, league, tableHtml)}
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>#</th><th>Clube</th><th class="right">J</th><th class="right">V</th><th class="right">E</th><th class="right">D</th>
+                  <th class="right">GP</th><th class="right">GC</th><th class="right">SG</th><th class="right">Pts</th>
+                </tr>
+              </thead>
+              <tbody>${tableHtml}</tbody>
+            </table>
             <div class="sep"></div>
             <div class="row">
               <button class="btn btn-primary" data-go="/matches">Voltar aos Jogos</button>
@@ -1716,243 +1314,7 @@ function viewMatches() {
     });
   }
 
-  
-// -----------------------------
-// Competitions rendering (ZIP2)
-// -----------------------------
-function renderCompetitionsBody(save, compView, league, tableRowsHtml) {
-  // compView: 'LEAGUE' | 'CDB' | 'LIB' | 'SULA'
-  const sub = (save.ui && save.ui.compTab) ? save.ui.compTab : 'TABLE'; // TABLE | SCORERS | SCOUT
-
-  const tabBtn = (key, label) => `<button class="btn ${sub===key?'btn-primary':''}" data-action="setCompTab" data-tab="${key}" type="button">${label}</button>`;
-
-  const tabs = `
-    <div class="row" style="margin-bottom:10px; flex-wrap:wrap;">
-      ${tabBtn('TABLE','Tabela')}
-      ${tabBtn('SCORERS','Artilheiros')}
-      ${tabBtn('SCOUT','Scout')}
-    </div>
-  `;
-
-  // --- Helpers
-  const players = state.packData?.players?.players || [];
-  const clubs = state.packData?.clubs?.clubs || [];
-  const byClub = new Map();
-  for (const p of players) {
-    const cid = p.clubId || p.club || p.teamId;
-    if (!cid) continue;
-    if (!byClub.has(cid)) byClub.set(cid, []);
-    byClub.get(cid).push(p);
-  }
-
-  function getClubName(id){
-    return (clubs.find(c=>c.id===id)?.name) || id;
-  }
-
-  function topScorersFallback(limit=12){
-    // Simple deterministic fallback based on OVR + position weights
-    const pool = players.slice(0, 2500).map(p=>{
-      const ovr = Number(p.overall||p.ovr||60);
-      const pos = String(p.position||p.pos||'').toUpperCase();
-      const w = (pos.includes('ST')||pos.includes('CF')||pos.includes('FW')||pos.includes('ATA'))?1.3:(pos.includes('AM')||pos.includes('MEI'))?1.1:0.7;
-      return { p, score: ovr*w };
-    }).sort((a,b)=>b.score-a.score).slice(0, limit);
-    return pool.map((x,i)=>({
-      rank:i+1,
-      name:x.p.name || 'Jogador',
-      clubId:x.p.clubId || '',
-      goals: Math.max(1, Math.round((x.score-50)/8)),
-      apps: 38
-    }));
-  }
-
-  // Prefer real stat bucket if the save already tracks it
-  const stats = save.season?.stats || save.stats || {};
-  const goalsByPlayer = stats.goalsByPlayer || null;
-
-  function topScorers(limit=12){
-    if (!goalsByPlayer) return topScorersFallback(limit);
-    const arr = Object.entries(goalsByPlayer).map(([pid,g])=>{
-      const p = players.find(x=>String(x.id)===String(pid)) || {};
-      return { pid, p, goals:Number(g)||0 };
-    }).sort((a,b)=>b.goals-a.goals).slice(0, limit);
-    return arr.map((x,i)=>({
-      rank:i+1,
-      name:x.p.name || x.pid,
-      clubId:x.p.clubId || '',
-      goals:x.goals,
-      apps:Number(x.p.apps||x.p.matches||0) || 0
-    }));
-  }
-
-  function scoutList(limit=15){
-    const myClub = save.career?.clubId;
-    const pool = players
-      .filter(p=> (p.clubId||p.club||p.teamId) && String(p.clubId||p.club||p.teamId)!==String(myClub))
-      .map(p=>{
-        const ovr = Number(p.overall||p.ovr||60);
-        const age = Number(p.age||20);
-        const value = Math.round((ovr*ovr) * (1.2 - Math.min(0.6, (age-18)/40)));
-        return { p, ovr, age, value };
-      })
-      .sort((a,b)=> (b.ovr-a.ovr) || (a.age-b.age))
-      .slice(0, limit);
-
-    return `
-      <div class="notice" style="margin-bottom:10px">Scout da temporada (MVP): lista rápida de jogadores bem avaliados fora do seu clube.</div>
-      <div class="list">
-        ${pool.map(x=>{
-          const cid = x.p.clubId || x.p.club || x.p.teamId || '';
-          return `
-            <div class="item">
-              <div class="item-left">
-                <div class="item-title">${esc(x.p.name || 'Jogador')}</div>
-                <div class="item-sub">${esc(x.p.position||x.p.pos||'')} • ${esc(getClubName(cid))} • Idade ${x.age}</div>
-              </div>
-              <div class="item-right">
-                <span class="badge">OVR ${x.ovr}</span>
-                <span class="badge">Valor ${esc(x.value)}k</span>
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-    `;
-  }
-
-  // --- Render bodies
-  if (sub === 'SCORERS') {
-    const rows = topScorers(14);
-    return tabs + `
-      <div class="card" style="border-radius:16px; background:rgba(255,255,255,.02); border:1px solid var(--line);">
-        <div class="card-header">
-          <div>
-            <div class="card-title">Artilheiros • ${esc(league?.name || save.season?.leagueId || 'Liga')}</div>
-            <div class="card-subtitle">Top goleadores (MVP)</div>
-          </div>
-          <span class="badge">Temporada</span>
-        </div>
-        <div class="card-body">
-          <div style="overflow:auto;">
-            <table style="width:100%; border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="text-align:left; padding:8px 6px;">#</th>
-                  <th style="text-align:left; padding:8px 6px;">Jogador</th>
-                  <th style="text-align:left; padding:8px 6px;">Clube</th>
-                  <th style="text-align:right; padding:8px 6px;">Gols</th>
-                  <th style="text-align:right; padding:8px 6px;">J</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map(r=>`
-                  <tr style="border-top:1px solid var(--line);">
-                    <td style="padding:8px 6px;">${r.rank}</td>
-                    <td style="padding:8px 6px;">${esc(r.name)}</td>
-                    <td style="padding:8px 6px;">
-                      <div style="display:flex; align-items:center; gap:8px;">
-                        ${clubLogoHtml(r.clubId, 22)}
-                        <span class="small">${esc(getClubName(r.clubId))}</span>
-                      </div>
-                    </td>
-                    <td style="padding:8px 6px; text-align:right;"><b>${r.goals}</b></td>
-                    <td style="padding:8px 6px; text-align:right;">${r.apps}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (sub === 'SCOUT') {
-    return tabs + scoutList(18);
-  }
-
-  // TABLE default
-  const leagueId = save.season?.leagueId || '';
-  const isA = leagueId === 'BRA_SERIE_A';
-  const isB = leagueId === 'BRA_SERIE_B';
-
-  const legend = `
-    <div class="row" style="gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-      ${isA ? `<span class="badge">🟢 1º–6º Libertadores</span>` : ``}
-      ${isA ? `<span class="badge">🟠 7º–12º Sul-Americana</span>` : ``}
-      ${isA ? `<span class="badge">🔴 17º–20º Rebaixamento</span>` : ``}
-      ${isB ? `<span class="badge">🔵 1º–4º Acesso</span>` : ``}
-      ${isB ? `<span class="badge">🔴 17º–20º Rebaixamento</span>` : ``}
-    </div>
-  `;
-
-  // Wrap table rows with zone highlights
-  const decorateTable = () => {
-    if (!tableRowsHtml) return `<div class="notice">Sem tabela para exibir.</div>`;
-    // tableRowsHtml already contains <tr> ...; we'll just insert class markers using positions by rebuilding from save.season.table
-    const rows = sortTableRows(Object.values(save.season.table || {}));
-    const out = rows.map((t, idx) => {
-      const pos = idx + 1;
-      let bg = '';
-      if (isA && pos <= 6) bg = 'background:rgba(34,197,94,.10);';
-      else if (isA && pos >= 17) bg = 'background:rgba(239,68,68,.10);';
-      else if (isA && pos >= 7 && pos <= 12) bg = 'background:rgba(245,158,11,.08);';
-      if (isB && pos <= 4) bg = 'background:rgba(59,130,246,.10);';
-      if (isB && pos >= 17) bg = 'background:rgba(239,68,68,.10);';
-      const mark = t.id === save.career.clubId ? ' outline:1px solid rgba(34,197,94,.45);' : '';
-      return `
-        <tr style="${bg}${mark}">
-          <td>${pos}</td>
-          <td>
-            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-              ${clubLogoHtml(t.id, 26)}
-              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(t.name)}</span>
-            </div>
-          </td>
-          <td class="right">${t.P}</td>
-          <td class="right">${t.W}</td>
-          <td class="right">${t.D}</td>
-          <td class="right">${t.L}</td>
-          <td class="right">${t.GF}</td>
-          <td class="right">${t.GA}</td>
-          <td class="right">${t.GD}</td>
-          <td class="right"><b>${t.Pts}</b></td>
-        </tr>
-      `;
-    }).join('');
-    return `
-      ${legend}
-      <div style="overflow:auto;">
-        <table style="width:100%; border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th>Pos</th><th>Clube</th>
-              <th class="right">J</th><th class="right">V</th><th class="right">E</th><th class="right">D</th>
-              <th class="right">GP</th><th class="right">GC</th><th class="right">SG</th><th class="right">Pts</th>
-            </tr>
-          </thead>
-          <tbody>${out}</tbody>
-        </table>
-      </div>
-    `;
-  };
-
-  if (compView === 'LEAGUE') return tabs + decorateTable();
-
-  // Cup/continental MVP placeholder panels
-  const title = compView === 'CDB' ? 'Copa do Brasil' : (compView === 'LIB' ? 'Libertadores' : 'Sul-Americana');
-  const note = (save.season?.ext?.calendarNotes && save.season.ext.calendarNotes[compView]) || '';
-  return tabs + `
-    <div class="notice" style="margin-bottom:10px"><b>${title}</b> (MVP): estrutura pronta. ${esc(note)}</div>
-    <div class="card" style="border-radius:16px; background:rgba(255,255,255,.02); border:1px solid var(--line);">
-      <div class="card-body">
-        <div class="notice">Nesta build, partidas completas simuladas: <b>liga nacional</b>. Copas/continentais aparecem no calendário e serão simuladas na próxima etapa.</div>
-      </div>
-    </div>
-  `;
-}
-
-function viewFinance() {
+  function viewFinance() {
     return requireSave((save) => {
       ensureSystems(save);
       const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
@@ -2308,18 +1670,6 @@ function viewFinance() {
         el.addEventListener('click', () => {
           location.hash = '/hub';
         });
-
-if (action === 'setCompTab') {
-  el.addEventListener('click', () => {
-    const save = activeSave();
-    if (!save) return;
-    save.ui = save.ui || {};
-    save.ui.compTab = el.getAttribute('data-tab') || 'TABLE';
-    save.meta.updatedAt = nowIso();
-    writeSlot(state.settings.activeSlotId, save);
-    route();
-  });
-}
       }
       if (action === 'setFormation') {
         el.addEventListener('change', () => {
@@ -2510,24 +1860,6 @@ if (action === 'setCompTab') {
       }
 
       // --- Jogos
-
-      // --- Próxima temporada
-      if (action === 'nextSeason') {
-        el.addEventListener('click', () => {
-          const save = activeSave();
-          if (!save) return;
-          ensureSystems(save);
-          ensureSeason(save);
-          ensureSeasonExtensions(save);
-          seasonFinalizeIfEnded(save);
-          if (!save.season?.ext?.finalized) return;
-          startNextSeason(save);
-          save.meta.updatedAt = nowIso();
-          writeSlot(state.settings.activeSlotId, save);
-          route();
-        });
-      }
-
       if (action === 'playNextRound') {
         el.addEventListener('click', () => {
           const save = activeSave();
@@ -2549,78 +1881,9 @@ if (action === 'setCompTab') {
             applyResultToTable(save.season.table, m.homeId, m.awayId, m.hg, m.ag);
           });
 
-
-          // Simula a rodada da Série B em background (para promoção/rebaixamento)
-          const b = save.season.ext?.otherLeagues?.BRA_SERIE_B;
-          if (b && Array.isArray(b.rounds) && b.currentRound < b.rounds.length) {
-            const bMatches = b.rounds[b.currentRound] || [];
-            bMatches.forEach(mm => {
-              if (mm.played) return;
-              const simB = simulateMatch(mm.homeId, mm.awayId, save);
-              mm.hg = simB.hg; mm.ag = simB.ag; mm.played = true;
-              applyResultToTable(b.table, mm.homeId, mm.awayId, mm.hg, mm.ag);
-            });
-            b.currentRound += 1;
-          }
-
-          // Simula eventos extras desta 'semana' (Copa do Brasil / Continental) somente do clube do usuário
-          const week = r;
-          const weekExtra = save.season.ext?.weekEvents?.[week] || { cupMatchIds: [], continentalMatchIds: [] };
-          const extraResults = [];
-
-          // Copa do Brasil
-          (weekExtra.cupMatchIds || []).forEach((id) => {
-            const cm = findCupMatchById(save, id);
-            if (!cm || cm.played) return;
-            const simC = simulateMatch(cm.homeId, cm.awayId, save);
-            cm.hg = simC.hg; cm.ag = simC.ag; cm.played = true;
-
-            // desempate simples em pênaltis se empatar
-            if (cm.hg === cm.ag) {
-              if (Math.random() < 0.5) cm.hg += 1; else cm.ag += 1;
-            }
-            extraResults.push({ ...cm });
-
-            // avança no bracket: define o vencedor e cria o confronto da próxima fase para o clube do usuário
-            const cup = save.season.ext?.cups?.BRA_COPA_DO_BRASIL;
-            if (cup) {
-              const winner = (cm.hg > cm.ag) ? cm.homeId : cm.awayId;
-              cup.eliminated[(winner === cm.homeId) ? cm.awayId : cm.homeId] = true;
-
-              const nextRound = cup.rounds[cm.roundIndex + 1];
-              if (nextRound) {
-                // coloca o vencedor numa vaga TBD da próxima fase
-                for (const nm of nextRound.matches) {
-                  if (nm.homeId === '__TBD__') { nm.homeId = winner; break; }
-                  if (nm.awayId === '__TBD__') { nm.awayId = winner; break; }
-                }
-              } else {
-                cup.winner = winner;
-              }
-            }
-          });
-
-          // Continental (fase de grupos) - atualiza tabela
-          (weekExtra.continentalMatchIds || []).forEach((id) => {
-            const gm = findContinentalMatchById(save, id);
-            if (!gm || gm.played) return;
-            const simG = simulateMatch(gm.homeId, gm.awayId, save);
-            gm.hg = simG.hg; gm.ag = simG.ag; gm.played = true;
-            extraResults.push({ ...gm });
-
-            const c = save.season.ext?.continental;
-            if (c && c.table) {
-              applyResultToTable(c.table, gm.homeId, gm.awayId, gm.hg, gm.ag);
-            }
-          });
-
-          // Guarda extras pra exibir junto dos resultados da semana
-          save.season.lastExtraResults = extraResults;
-
           // Guarda o resumo da rodada jogada (para exibir resultados)
           save.season.lastRoundPlayed = r;
           save.season.lastResults = (matches || []).map(m => ({ ...m }));
-          save.season.lastResultsAll = [...(save.season.lastResults || []), ...(save.season.lastExtraResults || [])];
 
           // receitas/ custos semanais ao jogar uma rodada
           const econ = state.packData?.rules?.economy || {};
@@ -2638,20 +1901,6 @@ if (action === 'setCompTab') {
           route();
         });
       }
-
-    // Seletor de competição (Competições)
-    document.querySelectorAll('[data-field="compView"]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const save = activeSave();
-        if (!save) return;
-        if (!save.ui) save.ui = {};
-        save.ui.compView = el.value || 'LEAGUE';
-        save.meta.updatedAt = nowIso();
-        writeSlot(state.settings.activeSlotId, save);
-        route();
-      });
-    });
-
     });
   }
 
@@ -2665,4 +1914,6 @@ if (action === 'setCompTab') {
   }
 
   boot();
+  try { window.dispatchEvent(new Event('VFM_APP_READY')); } catch(e) {}
+
 })();
