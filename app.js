@@ -1,10 +1,6 @@
 (() => {
   "use strict";
 
-  // Build/Cache-buster (ajuda a confirmar que o navegador carregou o JS novo)
-  const BUILD_ID = "20260124fix1";
-  try { console.info("[VFM] build", BUILD_ID); } catch (_) {}
-
   /**
    * Vale Futebol Manager 2026 - Premium
    *
@@ -25,6 +21,7 @@
         splash.setAttribute('aria-hidden','true');}, 600);
     }
   });
+  });
 
   // Failsafe: garante que o splash some mesmo em hosts com cache agressivo
   window.addEventListener("load", () => {
@@ -34,27 +31,6 @@
 
   /** Seleciona um elemento no DOM */
   const $ = (sel) => document.querySelector(sel);
-
-  /** Navegação robusta: atualiza hash e força route() (evita "clique não faz nada" por cache/hash igual) */
-  function navTo(path) {
-    if (!path) return;
-    const clean = String(path).startsWith("/") ? String(path) : ("/" + String(path).replace(/^#/, ""));
-    const newHash = "#" + clean;
-    if (location.hash !== newHash) location.hash = newHash;
-    // força render imediato (alguns browsers/mobile podem atrasar hashchange)
-    // NÃO engole erros: se uma view quebrar, mostramos um cartão de erro.
-    route();
-  }
-
-  // Delegação global para data-go (não depende de bindEvents / re-render)
-  document.addEventListener("click", (ev) => {
-    const goEl = ev.target && ev.target.closest ? ev.target.closest("[data-go]") : null;
-    if (goEl) {
-      ev.preventDefault();
-      const target = goEl.getAttribute("data-go");
-      navTo(target);
-    }
-  });
 
   /** Tenta fazer o parse de JSON, senão retorna fallback */
   function safeJsonParse(str, fallback) {
@@ -319,40 +295,13 @@
     const hash = location.hash.replace("#", "");
     const path = hash || "/home";
     const view = routes[path] || viewHome;
-
+    const html = view();
+    // Renderiza no container e vincula eventos
     const viewEl = document.getElementById("view");
-
-    try {
-      const html = view();
-      if (viewEl) viewEl.innerHTML = html;
-      bindEvents();
-    } catch (err) {
-      console.error("[VFM] Erro ao renderizar rota:", path, err);
-      if (viewEl) {
-        const msg = (err && (err.message || String(err))) ? (err.message || String(err)) : "Erro desconhecido";
-        viewEl.innerHTML = `
-          <div class="card">
-            <div class="card-header">
-              <div>
-                <div class="card-title">Erro ao abrir a tela</div>
-                <div class="card-subtitle">Rota: <b>${esc(path)}</b></div>
-              </div>
-              <span class="badge">Falha</span>
-            </div>
-            <div class="card-body">
-              <div class="notice">⚠️ ${esc(msg)}</div>
-              <div class="sep"></div>
-              <div class="row">
-                <button class="btn btn-primary" data-go="/home" type="button">Voltar ao Menu</button>
-                <button class="btn" data-go="/hub" type="button">HUB</button>
-              </div>
-              <div class="sep"></div>
-              <div class="small">Dica: se isso acontecer após atualizar, faça Ctrl+F5 ou limpe cache.</div>
-            </div>
-          </div>
-        `;
-      }
+    if (viewEl) {
+      viewEl.innerHTML = html;
     }
+    bindEvents();
   }
 
   // Ouve mudança de hash para atualizar a rota
@@ -1306,7 +1255,8 @@
 
   function seasonFinalizeIfEnded(save) {
     ensureSeason(save);
-    // Importante: não chamar a si mesma aqui (isso causava "Maximum call stack size exceeded")
+      ensureSeasonExtensions(save);
+      seasonFinalizeIfEnded(save);
     ensureSeasonExtensions(save);
 
     const total = save.season.rounds.length;
@@ -1511,7 +1461,88 @@
     else { home.D += 1; away.D += 1; home.Pts += 1; away.Pts += 1; }
   }
 
-  function viewMatches() {
+  
+  function renderUpcomingCalendar(save) {
+    // Mostra as próximas semanas (liga + eventos extras) focando no clube do usuário.
+    try {
+      const clubId = save.career.clubId;
+      const totalRounds = save.season.rounds.length;
+      const start = Math.max(0, save.season.currentRound);
+      const weeksToShow = 8;
+      const items = [];
+
+      for (let w = start; w < Math.min(totalRounds, start + weeksToShow); w++) {
+        const leagueMatches = (save.season.rounds[w] || []).filter(m => (m.homeId === clubId || m.awayId === clubId));
+        const extra = save.season.ext?.weekEvents?.[w] || { cupMatchIds: [], continentalMatchIds: [] };
+        const cupMatches = (extra.cupMatchIds || []).map(id => findCupMatchById(save, id)).filter(m => m && (m.homeId === clubId || m.awayId === clubId));
+        const contMatches = (extra.continentalMatchIds || []).map(id => findContinentalMatchById(save, id)).filter(m => m && (m.homeId === clubId || m.awayId === clubId));
+
+        const parts = [];
+        leagueMatches.forEach(m => parts.push({ ...m, compLabel: 'Liga', week: w }));
+        cupMatches.forEach(m => parts.push({ ...m, compLabel: 'Copa do Brasil', week: w }));
+        contMatches.forEach(m => parts.push({ ...m, compLabel: (save.season.ext?.continental?.name || 'Continental'), week: w }));
+
+        if (!parts.length) continue;
+
+        const list = parts.map(m => {
+          const hc = getClub(m.homeId);
+          const ac = getClub(m.awayId);
+          const score = m.played ? `<b>${m.hg} x ${m.ag}</b>` : `<span class="badge">A jogar</span>`;
+          return `
+            <div class="item" style="padding:10px;">
+              <div class="item-left" style="display:flex; gap:10px; align-items:center;">
+                ${clubLogoHtml(m.homeId, 28)}
+                <div style="min-width:0;">
+                  <div class="item-title">${esc(hc?.short || hc?.name || m.homeId)} <span class="small">vs</span> ${esc(ac?.short || ac?.name || m.awayId)}</div>
+                  <div class="item-sub">${esc(m.compLabel)} • Semana ${m.week+1}</div>
+                </div>
+                ${clubLogoHtml(m.awayId, 28)}
+              </div>
+              <div class="item-right">${score}</div>
+            </div>
+          `;
+        }).join('');
+
+        items.push(`
+          <div class="card" style="margin-top:12px;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Agenda da Semana ${w+1}</div>
+                <div class="card-subtitle">Liga + Copas/Continentais do seu clube</div>
+              </div>
+              <span class="badge">W${w+1}</span>
+            </div>
+            <div class="card-body"><div class="list">${list}</div></div>
+          </div>
+        `);
+      }
+
+      if (!items.length) {
+        return `<div class="notice">Sem jogos futuros encontrados para o seu clube.</div>`;
+      }
+
+      return `
+        <div class="sep"></div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Calendário Completo (Próximas Semanas)</div>
+              <div class="card-subtitle">Inclui Liga + Copa do Brasil + Continental (quando aplicável)</div>
+            </div>
+            <span class="badge">Preview</span>
+          </div>
+          <div class="card-body">
+            <div class="notice">MVP: a simulação completa é da Liga. Copas/Continentais são simuladas apenas quando caem na sua semana.</div>
+            ${items.join('')}
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      return `<div class="notice">Não foi possível montar o calendário: ${esc(e?.message || e)}</div>`;
+    }
+  }
+
+function viewMatches() {
     return requireSave((save) => {
       ensureSystems(save);
       ensureSeason(save);
@@ -1601,6 +1632,8 @@
             <div class="sep"></div>
             ${lastBlock}
             ${nextBlock}
+            ${renderUpcomingCalendar(save)}
+
             ${renderExtraNextMatches(nextCup, nextCont, save)}
           </div>
         </div>
@@ -1608,131 +1641,7 @@
     });
   }
 
-  
-/** Renderiza o corpo da tela de Competições (Liga / Copa do Brasil / Continental) */
-function renderCompetitionsBody(save, compView, league, tableRowsHtml) {
-  const view = (compView || 'LEAGUE').toUpperCase();
-
-  // Liga: renderiza a tabela já montada
-  if (view === 'LEAGUE') {
-    const rules = getLeagueQualificationRules(save.season?.leagueId || 'BRA_SERIE_A');
-    const legendParts = [];
-    if (rules?.libertadores?.length) legendParts.push(`<span class="badge">🟢 Libertadores: ${esc(rules.libertadores.join('–'))}º</span>`);
-    if (rules?.sudamericana?.length) legendParts.push(`<span class="badge">🟡 Sul-Americana: ${esc(rules.sudamericana.join('–'))}º</span>`);
-    if (rules?.relegation?.length) legendParts.push(`<span class="badge">🔴 Rebaixamento: ${esc(rules.relegation.join('–'))}º</span>`);
-
-    return `
-      <div class="row" style="gap:10px; flex-wrap:wrap; margin-bottom:10px">
-        ${legendParts.join('')}
-      </div>
-
-      <div style="overflow:auto; border:1px solid var(--line); border-radius:14px;">
-        <table style="width:100%; border-collapse:collapse; min-width:720px;">
-          <thead>
-            <tr style="background:rgba(255,255,255,.03)">
-              <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--line);">#</th>
-              <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--line);">Clube</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">J</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">V</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">E</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">D</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">GP</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">GC</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">SG</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">Pts</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRowsHtml}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  // Copa do Brasil (MVP): mostra próximos jogos e fase
-  if (view === 'CDB') {
-    const cdb = save.season?.ext?.cups?.CDB || save.season?.ext?.cup || null;
-    const stage = cdb?.stage || cdb?.roundName || 'Mata-mata';
-    const next = getNextCupMatches(save, 'CDB');
-    const list = (next && next.length)
-      ? next.map(m => matchItemFromObj(m, save)).join('')
-      : `<div class="notice">Nenhum jogo de Copa do Brasil disponível no momento.</div>`;
-
-    return `
-      <div class="card" style="margin:0; border-radius:16px;">
-        <div class="card-header">
-          <div>
-            <div class="card-title">Copa do Brasil</div>
-            <div class="card-subtitle">Fase atual: <b>${esc(stage)}</b></div>
-          </div>
-          <span class="badge">MVP</span>
-        </div>
-        <div class="card-body">
-          ${list}
-          <div class="sep"></div>
-          <div class="notice">Nesta versão, a Copa do Brasil aparece no calendário do seu clube e pode ser simulada. Detalhamento completo de chaves/eliminação entra na Parte 2.</div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Continental (Libertadores / Sul-Americana) — placeholder funcional
-  if (view === 'LIB' || view === 'SULA') {
-    const cont = save.season?.ext?.continental || null;
-    const name = cont?.name || (view === 'LIB' ? 'Libertadores' : 'Sul-Americana');
-    const next = getNextContinentalMatches(save);
-    const list = (next && next.length)
-      ? next.map(m => matchItemFromObj(m, save)).join('')
-      : `<div class="notice">Nenhum jogo continental disponível no momento.</div>`;
-
-    return `
-      <div class="card" style="margin:0; border-radius:16px;">
-        <div class="card-header">
-          <div>
-            <div class="card-title">${esc(name)}</div>
-            <div class="card-subtitle">Estrutura pronta • calendário integrado</div>
-          </div>
-          <span class="badge">MVP</span>
-        </div>
-        <div class="card-body">
-          ${list}
-          <div class="sep"></div>
-          <div class="notice">Nesta versão, o foco é a liga nacional. O módulo continental completo (fase de grupos/ligas e mata-mata) entra na Parte 2.</div>
-        </div>
-      </div>
-    `;
-  }
-
-  return `<div class="notice">Competição não suportada nesta versão.</div>`;
-}
-
-function getNextCupMatches(save, cupId) {
-  const all = save.season?.ext?.cupMatches || save.season?.ext?.matches || [];
-  return all.filter(m => (m.compId === cupId || m.cupId === cupId) && !m.played).slice(0, 6);
-}
-
-function getNextContinentalMatches(save) {
-  const all = save.season?.ext?.continentalMatches || save.season?.ext?.matches || [];
-  return all.filter(m => (m.compId === 'LIB' || m.compId === 'SULA' || m.continental) && !m.played).slice(0, 6);
-}
-
-function getLeagueQualificationRules(leagueId) {
-  // regras padrão (ajustáveis via /data/qualifications.json se existir no pack no futuro)
-  if (leagueId === 'BRA_SERIE_A') {
-    return {
-      libertadores: [1,2,3,4,5,6],
-      sudamericana: [7,8,9,10,11,12],
-      relegation: [17,18,19,20]
-    };
-  }
-  if (leagueId === 'BRA_SERIE_B') {
-    return { promotion: [1,2,3,4], relegation: [17,18,19,20] };
-  }
-  return null;
-}
-
-function viewCompetitions() {
+  function viewCompetitions() {
     return requireSave((save) => {
       ensureSystems(save);
       ensureSeason(save);
@@ -1807,7 +1716,243 @@ function viewCompetitions() {
     });
   }
 
-  function viewFinance() {
+  
+// -----------------------------
+// Competitions rendering (ZIP2)
+// -----------------------------
+function renderCompetitionsBody(save, compView, league, tableRowsHtml) {
+  // compView: 'LEAGUE' | 'CDB' | 'LIB' | 'SULA'
+  const sub = (save.ui && save.ui.compTab) ? save.ui.compTab : 'TABLE'; // TABLE | SCORERS | SCOUT
+
+  const tabBtn = (key, label) => `<button class="btn ${sub===key?'btn-primary':''}" data-action="setCompTab" data-tab="${key}" type="button">${label}</button>`;
+
+  const tabs = `
+    <div class="row" style="margin-bottom:10px; flex-wrap:wrap;">
+      ${tabBtn('TABLE','Tabela')}
+      ${tabBtn('SCORERS','Artilheiros')}
+      ${tabBtn('SCOUT','Scout')}
+    </div>
+  `;
+
+  // --- Helpers
+  const players = state.packData?.players?.players || [];
+  const clubs = state.packData?.clubs?.clubs || [];
+  const byClub = new Map();
+  for (const p of players) {
+    const cid = p.clubId || p.club || p.teamId;
+    if (!cid) continue;
+    if (!byClub.has(cid)) byClub.set(cid, []);
+    byClub.get(cid).push(p);
+  }
+
+  function getClubName(id){
+    return (clubs.find(c=>c.id===id)?.name) || id;
+  }
+
+  function topScorersFallback(limit=12){
+    // Simple deterministic fallback based on OVR + position weights
+    const pool = players.slice(0, 2500).map(p=>{
+      const ovr = Number(p.overall||p.ovr||60);
+      const pos = String(p.position||p.pos||'').toUpperCase();
+      const w = (pos.includes('ST')||pos.includes('CF')||pos.includes('FW')||pos.includes('ATA'))?1.3:(pos.includes('AM')||pos.includes('MEI'))?1.1:0.7;
+      return { p, score: ovr*w };
+    }).sort((a,b)=>b.score-a.score).slice(0, limit);
+    return pool.map((x,i)=>({
+      rank:i+1,
+      name:x.p.name || 'Jogador',
+      clubId:x.p.clubId || '',
+      goals: Math.max(1, Math.round((x.score-50)/8)),
+      apps: 38
+    }));
+  }
+
+  // Prefer real stat bucket if the save already tracks it
+  const stats = save.season?.stats || save.stats || {};
+  const goalsByPlayer = stats.goalsByPlayer || null;
+
+  function topScorers(limit=12){
+    if (!goalsByPlayer) return topScorersFallback(limit);
+    const arr = Object.entries(goalsByPlayer).map(([pid,g])=>{
+      const p = players.find(x=>String(x.id)===String(pid)) || {};
+      return { pid, p, goals:Number(g)||0 };
+    }).sort((a,b)=>b.goals-a.goals).slice(0, limit);
+    return arr.map((x,i)=>({
+      rank:i+1,
+      name:x.p.name || x.pid,
+      clubId:x.p.clubId || '',
+      goals:x.goals,
+      apps:Number(x.p.apps||x.p.matches||0) || 0
+    }));
+  }
+
+  function scoutList(limit=15){
+    const myClub = save.career?.clubId;
+    const pool = players
+      .filter(p=> (p.clubId||p.club||p.teamId) && String(p.clubId||p.club||p.teamId)!==String(myClub))
+      .map(p=>{
+        const ovr = Number(p.overall||p.ovr||60);
+        const age = Number(p.age||20);
+        const value = Math.round((ovr*ovr) * (1.2 - Math.min(0.6, (age-18)/40)));
+        return { p, ovr, age, value };
+      })
+      .sort((a,b)=> (b.ovr-a.ovr) || (a.age-b.age))
+      .slice(0, limit);
+
+    return `
+      <div class="notice" style="margin-bottom:10px">Scout da temporada (MVP): lista rápida de jogadores bem avaliados fora do seu clube.</div>
+      <div class="list">
+        ${pool.map(x=>{
+          const cid = x.p.clubId || x.p.club || x.p.teamId || '';
+          return `
+            <div class="item">
+              <div class="item-left">
+                <div class="item-title">${esc(x.p.name || 'Jogador')}</div>
+                <div class="item-sub">${esc(x.p.position||x.p.pos||'')} • ${esc(getClubName(cid))} • Idade ${x.age}</div>
+              </div>
+              <div class="item-right">
+                <span class="badge">OVR ${x.ovr}</span>
+                <span class="badge">Valor ${esc(x.value)}k</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  // --- Render bodies
+  if (sub === 'SCORERS') {
+    const rows = topScorers(14);
+    return tabs + `
+      <div class="card" style="border-radius:16px; background:rgba(255,255,255,.02); border:1px solid var(--line);">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Artilheiros • ${esc(league?.name || save.season?.leagueId || 'Liga')}</div>
+            <div class="card-subtitle">Top goleadores (MVP)</div>
+          </div>
+          <span class="badge">Temporada</span>
+        </div>
+        <div class="card-body">
+          <div style="overflow:auto;">
+            <table style="width:100%; border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="text-align:left; padding:8px 6px;">#</th>
+                  <th style="text-align:left; padding:8px 6px;">Jogador</th>
+                  <th style="text-align:left; padding:8px 6px;">Clube</th>
+                  <th style="text-align:right; padding:8px 6px;">Gols</th>
+                  <th style="text-align:right; padding:8px 6px;">J</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(r=>`
+                  <tr style="border-top:1px solid var(--line);">
+                    <td style="padding:8px 6px;">${r.rank}</td>
+                    <td style="padding:8px 6px;">${esc(r.name)}</td>
+                    <td style="padding:8px 6px;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        ${clubLogoHtml(r.clubId, 22)}
+                        <span class="small">${esc(getClubName(r.clubId))}</span>
+                      </div>
+                    </td>
+                    <td style="padding:8px 6px; text-align:right;"><b>${r.goals}</b></td>
+                    <td style="padding:8px 6px; text-align:right;">${r.apps}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (sub === 'SCOUT') {
+    return tabs + scoutList(18);
+  }
+
+  // TABLE default
+  const leagueId = save.season?.leagueId || '';
+  const isA = leagueId === 'BRA_SERIE_A';
+  const isB = leagueId === 'BRA_SERIE_B';
+
+  const legend = `
+    <div class="row" style="gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+      ${isA ? `<span class="badge">🟢 1º–6º Libertadores</span>` : ``}
+      ${isA ? `<span class="badge">🟠 7º–12º Sul-Americana</span>` : ``}
+      ${isA ? `<span class="badge">🔴 17º–20º Rebaixamento</span>` : ``}
+      ${isB ? `<span class="badge">🔵 1º–4º Acesso</span>` : ``}
+      ${isB ? `<span class="badge">🔴 17º–20º Rebaixamento</span>` : ``}
+    </div>
+  `;
+
+  // Wrap table rows with zone highlights
+  const decorateTable = () => {
+    if (!tableRowsHtml) return `<div class="notice">Sem tabela para exibir.</div>`;
+    // tableRowsHtml already contains <tr> ...; we'll just insert class markers using positions by rebuilding from save.season.table
+    const rows = sortTableRows(Object.values(save.season.table || {}));
+    const out = rows.map((t, idx) => {
+      const pos = idx + 1;
+      let bg = '';
+      if (isA && pos <= 6) bg = 'background:rgba(34,197,94,.10);';
+      else if (isA && pos >= 17) bg = 'background:rgba(239,68,68,.10);';
+      else if (isA && pos >= 7 && pos <= 12) bg = 'background:rgba(245,158,11,.08);';
+      if (isB && pos <= 4) bg = 'background:rgba(59,130,246,.10);';
+      if (isB && pos >= 17) bg = 'background:rgba(239,68,68,.10);';
+      const mark = t.id === save.career.clubId ? ' outline:1px solid rgba(34,197,94,.45);' : '';
+      return `
+        <tr style="${bg}${mark}">
+          <td>${pos}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+              ${clubLogoHtml(t.id, 26)}
+              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(t.name)}</span>
+            </div>
+          </td>
+          <td class="right">${t.P}</td>
+          <td class="right">${t.W}</td>
+          <td class="right">${t.D}</td>
+          <td class="right">${t.L}</td>
+          <td class="right">${t.GF}</td>
+          <td class="right">${t.GA}</td>
+          <td class="right">${t.GD}</td>
+          <td class="right"><b>${t.Pts}</b></td>
+        </tr>
+      `;
+    }).join('');
+    return `
+      ${legend}
+      <div style="overflow:auto;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th>Pos</th><th>Clube</th>
+              <th class="right">J</th><th class="right">V</th><th class="right">E</th><th class="right">D</th>
+              <th class="right">GP</th><th class="right">GC</th><th class="right">SG</th><th class="right">Pts</th>
+            </tr>
+          </thead>
+          <tbody>${out}</tbody>
+        </table>
+      </div>
+    `;
+  };
+
+  if (compView === 'LEAGUE') return tabs + decorateTable();
+
+  // Cup/continental MVP placeholder panels
+  const title = compView === 'CDB' ? 'Copa do Brasil' : (compView === 'LIB' ? 'Libertadores' : 'Sul-Americana');
+  const note = (save.season?.ext?.calendarNotes && save.season.ext.calendarNotes[compView]) || '';
+  return tabs + `
+    <div class="notice" style="margin-bottom:10px"><b>${title}</b> (MVP): estrutura pronta. ${esc(note)}</div>
+    <div class="card" style="border-radius:16px; background:rgba(255,255,255,.02); border:1px solid var(--line);">
+      <div class="card-body">
+        <div class="notice">Nesta build, partidas completas simuladas: <b>liga nacional</b>. Copas/continentais aparecem no calendário e serão simuladas na próxima etapa.</div>
+      </div>
+    </div>
+  `;
+}
+
+function viewFinance() {
     return requireSave((save) => {
       ensureSystems(save);
       const currency = state.packData?.rules?.gameRules?.currency || 'BRL';
@@ -2062,7 +2207,7 @@ function viewCompetitions() {
     document.querySelectorAll('[data-go]').forEach((el) => {
       el.addEventListener('click', () => {
         const target = el.getAttribute('data-go');
-        navTo(target);
+        if (target) location.hash = target;
       });
     });
     // Ações
@@ -2163,6 +2308,18 @@ function viewCompetitions() {
         el.addEventListener('click', () => {
           location.hash = '/hub';
         });
+
+if (action === 'setCompTab') {
+  el.addEventListener('click', () => {
+    const save = activeSave();
+    if (!save) return;
+    save.ui = save.ui || {};
+    save.ui.compTab = el.getAttribute('data-tab') || 'TABLE';
+    save.meta.updatedAt = nowIso();
+    writeSlot(state.settings.activeSlotId, save);
+    route();
+  });
+}
       }
       if (action === 'setFormation') {
         el.addEventListener('change', () => {
@@ -2503,43 +2660,9 @@ function viewCompetitions() {
     ensureSlots();
     await loadPacks();
     await loadPackData();
-    if (!location.hash) navTo('/home');
-    else route();
+    if (!location.hash) location.hash = '/home';
+    route();
   }
 
   boot();
-  function renderExtraNextMatches(nextCup, nextCont, save) {
-    const parts = [];
-    if (Array.isArray(nextCup) && nextCup.length) {
-      parts.push(`<div class="sep"></div><div class="badge">Copa do Brasil</div><div style="height:8px"></div>` + nextCup.map(m => matchItemFromObj(m, save)).join(''));
-    }
-    if (Array.isArray(nextCont) && nextCont.length) {
-      const name = save.season?.ext?.continental?.name || 'Continental';
-      parts.push(`<div class="sep"></div><div class="badge">${esc(name)}</div><div style="height:8px"></div>` + nextCont.map(m => matchItemFromObj(m, save)).join(''));
-    }
-    return parts.join('');
-  }
-
-  function matchItemFromObj(m, save) {
-    const hc = getClub(m.homeId) || (save.season?.ext?.continental?.table?.[m.homeId] || null);
-    const ac = getClub(m.awayId) || (save.season?.ext?.continental?.table?.[m.awayId] || null);
-    const score = m.played ? `<b style="font-size:16px">${m.hg} x ${m.ag}</b>` : `<span class="badge">Não jogado</span>`;
-    const isUser = (m.homeId === save.career.clubId || m.awayId === save.career.clubId);
-    const outline = isUser ? ' style="outline:1px solid rgba(34,197,94,.40)"' : '';
-    return `
-      <div class="item"${outline}>
-        <div class="item-left" style="display:flex; gap:10px; align-items:center;">
-          ${clubLogoHtml(m.homeId, 34)}
-          <div style="min-width:0;">
-            <div class="item-title">${esc(hc?.short || hc?.name || m.homeId)} <span class="small">vs</span> ${esc(ac?.short || ac?.name || m.awayId)}</div>
-            <div class="item-sub">${esc(m.compId || '')} • ${esc(m.stage || m.name || '')}</div>
-          </div>
-        </div>
-        <div class="item-right">
-          ${score}
-        </div>
-      </div>
-    `;
-  }
-;
 })();
