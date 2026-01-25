@@ -3,37 +3,69 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vale Futebol Manager 2026</title>
-  <link rel="stylesheet" href="./styles.css?v=20260123fix1" />
+  <title>Vale Futebol Manager 2026 - Premium</title>
+  <!-- Estilos principais -->
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div id="splash" style="position:fixed; inset:0; display:grid; place-items:center; background:#0b0f14; z-index:9999;">
-    <img src="./assets/images/vale_games_logo.png" alt="Vale Games" style="width:140px; height:140px; object-fit:contain; opacity:.95;" />
+  <!-- Tela de abertura com logo da produtora -->
+  <div class="splash" id="splash">
+    <div class="splash-logo">
+      <img src="./assets/images/vale_games_logo.png" alt="Vale Games" />
+    </div>
   </div>
 
+  <!-- Estrutura principal da aplicação -->
   <div class="app-shell">
-    <div class="topbar">
+    <header class="topbar">
       <div class="brand">
         <div class="logo-badge">VFM</div>
-        <div>
+        <div class="brand-text">
           <div class="brand-title">Vale Futebol Manager 2026</div>
           <div class="brand-subtitle">Carreira • Dados • Admin</div>
         </div>
       </div>
-      <button class="btn" data-go="/home" type="button">Início</button>
-    </div>
-
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" type="button" onclick="location.hash='#/home'">
+          Início
+        </button>
+      </div>
+    </header>
     <main class="main">
-      <div class="view" id="view">
-        <!-- Conteúdo renderizado pelo app.js?v=20260124fix1 -->
+      <div id="view" class="view">
+        <!-- O conteúdo será renderizado dinamicamente pelo app.js -->
       </div>
     </main>
-
-    <div class="footer">
-      <span>© Vale Games</span><span class="dot">•</span><span>Offline</span><span class="dot">•</span><span>LocalStorage</span>
-    </div>
+    <footer class="footer">
+      <span>© Vale Games</span>
+      <span class="dot">•</span>
+      <span>Offline • LocalStorage</span>
+    </footer>
   </div>
 
-  <script src="./app.js?v=20260124fix1"></script>
+  <!-- Lógica principal da aplicação -->
+  <script src="./app.js"></script>
+
+<script>
+(function(){
+  // Fail-safe: if the app JS não carregar, remova a splash e mostre aviso.
+  var timeout = setTimeout(function(){
+    var splash = document.getElementById('splash');
+    if (splash) { splash.classList.add('hidden'); splash.style.display='none'; }
+    var root = document.getElementById('app-root');
+    if (root && !root.innerHTML.trim()) {
+      root.innerHTML = '<div style="max-width:900px;margin:40px auto;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(0,0,0,.25);color:#fff;font-family:system-ui,Segoe UI,Roboto,Arial;">' +
+        '<h2 style="margin:0 0 8px 0;font-size:18px">Falha ao carregar o jogo</h2>' +
+        '<p style="margin:0;opacity:.9">O arquivo <b>app.js</b> não carregou (cache antigo ou upload incompleto).<br>Faça <b>Ctrl+F5</b> / limpe o cache e confirme que <b>index.html</b> e <b>app.js</b> estão no mesmo nível no GitHub.</p>' +
+      '</div>';
+    }
+  }, 3500);
+
+  window.addEventListener('VFM_APP_READY', function(){
+    clearTimeout(timeout);
+  }, { once: true });
+})();
+</script>
+
 </body>
 </html>
