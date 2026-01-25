@@ -252,7 +252,8 @@
         competitions: await tryLoad(files.competitions, { leagues: [], cups: [] }),
         rules: await tryLoad(files.rules, {}),
         seasons: await tryLoad(files.seasons, { seasons: [] }),
-        players: await tryLoad(files.players, { players: [] })
+        players: await tryLoad(files.players, { players: [] }),
+        qualifications: await tryLoad(files.qualifications, {})
       };
     } catch {
       state.packData = null;
@@ -344,11 +345,20 @@
         </div>
       `;
     }
+    state._saveCtx = save;
     return cb(save);
   }
 
   /** Obtém clube pelo id a partir do pacote carregado */
   function getClub(id) {
+    // Preferência: mundo salvo (para promoções/rebaixamentos e mudanças persistentes)
+    try {
+      const wc = state._saveCtx?.world?.clubs;
+      if (Array.isArray(wc)) {
+        const found = wc.find((c) => c.id === id);
+        if (found) return found;
+      }
+    } catch {}
     return state.packData?.clubs?.clubs.find((c) => c.id === id) || null;
   }
 
@@ -419,6 +429,14 @@
     save.squad = save.squad || {};
     save.tactics = save.tactics || {};
     save.training = save.training || {};
+    // Mundo persistente (clubes mutáveis para promoções/rebaixamentos)
+    if (!save.world) save.world = {};
+    if (!Array.isArray(save.world.clubs) || save.world.clubs.length === 0) {
+      const baseClubs = state.packData?.clubs?.clubs || [];
+      save.world.clubs = JSON.parse(JSON.stringify(baseClubs));
+    }
+    if (!save.progress) save.progress = {};
+    if (!save.progress.leagueTables) save.progress.leagueTables = {};
 
     if (!Array.isArray(save.squad.players) || save.squad.players.length === 0) {
       save.squad.players = generateSquadForClub(save.career.clubId);
@@ -999,7 +1017,7 @@
 
     const club = getClub(save.career.clubId);
     const leagueId = club?.leagueId || 'BRA_SERIE_A';
-    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === leagueId);
+    const clubs = ((save.world?.clubs) || (state.packData?.clubs?.clubs) || []).filter(c => c.leagueId === leagueId);
     const clubIds = clubs.map(c => c.id);
     const rounds = generateDoubleRoundRobin(clubIds);
     const table = buildEmptyTable(clubs);
@@ -1073,6 +1091,153 @@
     const club = getClub(save.career.clubId);
     save.meta.summary = `Carreira • ${club?.name || 'Clube'} • ${league?.name || save.season.leagueId} • ${save.season.id}`;
 
+    // Snapshot da tabela desta liga para promoções/rebaixamentos e histórico
+    try {
+      const store = ensureLeagueTableStore(save);
+      store[save.season.leagueId] = rows.map(r => ({ ...r }));
+    } catch {}
+
+    // Promoção/Rebaixamento Brasil (A<->B) nesta atualização
+    if (save.season.leagueId === 'BRA_SERIE_A' || save.season.leagueId === 'BRA_SERIE_B') {
+      applyBrazilPromotionRelegation(save);
+    }
+
+
+
+  // -----------------------------
+  // Promoção/Rebaixamento + Zonas (Parte 2)
+  // -----------------------------
+
+  function getBrazilZonesForLeague(leagueId) {
+    const q = state.packData?.qualifications || {};
+    const br = q.brazil || {};
+    if (leagueId === 'BRA_SERIE_A') return br.serieA || null;
+    if (leagueId === 'BRA_SERIE_B') return br.serieB || null;
+    return null;
+  }
+
+  function zoneInfoForPosition(leagueId, position) {
+    const zones = getBrazilZonesForLeague(leagueId);
+    if (!zones) return null;
+
+    // Série A
+    if (leagueId === 'BRA_SERIE_A') {
+      if (position >= zones.libertadores?.from && position <= zones.libertadores?.to) {
+        return { key: 'lib', label: 'LIB', cls: 'zone-lib' };
+      }
+      if (position >= zones.sudamericana?.from && position <= zones.sudamericana?.to) {
+        return { key: 'sula', label: 'SULA', cls: 'zone-sula' };
+      }
+      if (position >= zones.relegation?.from && position <= zones.relegation?.to) {
+        return { key: 'z4', label: 'Z4', cls: 'zone-z4' };
+      }
+    }
+
+    // Série B
+    if (leagueId === 'BRA_SERIE_B') {
+      if (position >= zones.promotion?.from && position <= zones.promotion?.to) {
+        return { key: 'up', label: 'SUBE', cls: 'zone-up' };
+      }
+      // Rebaixamento da B (default: 17-20, se não existir no JSON)
+      const relFrom = zones.relegation?.from ?? 17;
+      const relTo = zones.relegation?.to ?? 20;
+      if (position >= relFrom && position <= relTo) {
+        return { key: 'z4', label: 'Z4', cls: 'zone-z4' };
+      }
+    }
+
+    return null;
+  }
+
+  function ensureLeagueTableStore(save) {
+    if (!save.progress) save.progress = {};
+    if (!save.progress.leagueTables) save.progress.leagueTables = {};
+    const sid = save.season?.id || 'unknown';
+    if (!save.progress.leagueTables[sid]) save.progress.leagueTables[sid] = {};
+    return save.progress.leagueTables[sid];
+  }
+
+  function simulateLeagueSeason(save, leagueId) {
+    // Simulação rápida offline para ligas que o usuário não está jogando ativamente (MVP).
+    // Isso viabiliza promoção/rebaixamento já nesta atualização.
+    const store = ensureLeagueTableStore(save);
+    if (store[leagueId]) return store[leagueId];
+
+    const clubs = ((save.world?.clubs) || (state.packData?.clubs?.clubs) || []).filter(c => c.leagueId === leagueId);
+    const ids = clubs.map(c => c.id);
+
+    // tabela vazia no formato esperado pelo app
+    const table = buildEmptyTable(clubs);
+    const rounds = generateDoubleRoundRobin(ids);
+
+    // simula todas as rodadas com placares simples
+    for (const matches of rounds) {
+      for (const m of matches) {
+        const hg = Math.max(0, Math.round(Math.random() * 3));
+        const ag = Math.max(0, Math.round(Math.random() * 3));
+        applyResultToTable(table, m.homeId, m.awayId, hg, ag);
+      }
+    }
+    const rows = sortTableRows(Object.values(table));
+    store[leagueId] = rows.map(r => ({ ...r })); // snapshot
+    return store[leagueId];
+  }
+
+  function applyBrazilPromotionRelegation(save) {
+    const q = state.packData?.qualifications || {};
+    const map = Array.isArray(q.mapping) ? q.mapping : [];
+    const entryA = map.find(x => x.competition === 'BRA_SERIE_A');
+    // Usa regras do JSON; fallback para 4/4
+    const relegPosA = entryA?.nextSeasonEffects?.relegation?.positions || [17,18,19,20];
+    const promoteFromB = (q.brazil?.serieB?.promotion) ? null : null; // (mantido para compatibilidade)
+
+    // Precisamos das duas tabelas
+    const tableStore = ensureLeagueTableStore(save);
+
+    // tabela da liga que o usuário jogou
+    const rowsA = tableStore['BRA_SERIE_A'] || (save.season?.leagueId === 'BRA_SERIE_A'
+      ? sortTableRows(Object.values(save.season.table || {}))
+      : simulateLeagueSeason(save, 'BRA_SERIE_A'));
+
+    const rowsB = tableStore['BRA_SERIE_B'] || (save.season?.leagueId === 'BRA_SERIE_B'
+      ? sortTableRows(Object.values(save.season.table || {}))
+      : simulateLeagueSeason(save, 'BRA_SERIE_B'));
+
+    tableStore['BRA_SERIE_A'] = rowsA.map(r => ({...r}));
+    tableStore['BRA_SERIE_B'] = rowsB.map(r => ({...r}));
+
+    if (!rowsA?.length || !rowsB?.length) return;
+
+    // Rebaixados da A: posições 17-20 (4)
+    const rebaixados = relegPosA.map(p => rowsA[p-1]?.id).filter(Boolean);
+    // Promovidos da B: posições 1-4 (4)
+    const promovidos = [1,2,3,4].map(p => rowsB[p-1]?.id).filter(Boolean);
+
+    if (rebaixados.length !== 4 || promovidos.length !== 4) return;
+
+    // Atualiza liga dos clubes no mundo salvo
+    const wc = save.world?.clubs;
+    if (!Array.isArray(wc)) return;
+
+    for (const id of rebaixados) {
+      const c = wc.find(x => x.id === id);
+      if (c) c.leagueId = 'BRA_SERIE_B';
+    }
+    for (const id of promovidos) {
+      const c = wc.find(x => x.id === id);
+      if (c) c.leagueId = 'BRA_SERIE_A';
+    }
+
+    // Log de movimentações
+    if (!Array.isArray(save.progress.movements)) save.progress.movements = [];
+    save.progress.movements.push({
+      seasonId: save.season.id,
+      at: nowIso(),
+      type: 'BRA_A_B_SWAP',
+      relegatedFromA: rebaixados,
+      promotedFromB: promovidos
+    });
+  }
     return true;
   }
 
@@ -1082,8 +1247,8 @@
 
     // Avança ano/season id
     const next = nextSeasonIdFrom(save.season.id, save.season.yearStart || 2025);
-    const leagueId = save.season.leagueId;
-    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === leagueId);
+    const leagueId = getClub(save.career.clubId)?.leagueId || save.season.leagueId;
+    const clubs = ((save.world?.clubs) || (state.packData?.clubs?.clubs) || []).filter(c => c.leagueId === leagueId);
     const clubIds = clubs.map(c => c.id);
 
     save.season = {
@@ -1375,14 +1540,21 @@
       const rows = sortTableRows(Object.values(save.season.table));
 
       const tableHtml = rows.map((t, idx) => {
+        const pos = idx + 1;
+        const zone = zoneInfoForPosition(save.season.leagueId, pos);
+        const zonePill = zone ? `<span class="pill ${zone.cls}" title="${esc(zone.label)}">${esc(zone.label)}</span>` : '';
         const mark = t.id === save.career.clubId ? ' style="outline:1px solid rgba(34,197,94,.45)"' : '';
+        const trClass = zone ? ` class="${zone.cls}"` : '';
         return `
-          <tr${mark}>
-            <td>${idx+1}</td>
+          <tr${trClass}${mark}>
+            <td style="display:flex; align-items:center; gap:10px;">
+              <span>${pos}</span>
+              ${zonePill}
+            </td>
             <td>
-              <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+              <div class="club-cell">
                 ${clubLogoHtml(t.id, 26)}
-                <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(t.name)}</span>
+                <span class="club-name">${esc(t.name)}</span>
               </div>
             </td>
             <td class="right">${t.P}</td>
@@ -1409,7 +1581,7 @@
             <span class="badge">Rodada ${save.season.currentRound+1}</span>
           </div>
           <div class="card-body">
-            <div class="notice">MVP: nesta versão, a temporada jogável é a Liga (tabela completa). Copas/continentais entram na próxima atualização.</div>
+            <div class="notice">Zonas: <span class="pill zone-lib">LIB</span> <span class="pill zone-sula">SULA</span> <span class="pill zone-up">SUBE</span> <span class="pill zone-z4">Z4</span> • Copas/continentais entram na próxima atualização.</div>
             <div class="sep"></div>
             <table class="table">
               <thead>
