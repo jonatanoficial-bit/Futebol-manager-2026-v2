@@ -1,10 +1,6 @@
 (() => {
   "use strict";
 
-  // Build/Cache-buster (ajuda a confirmar que o navegador carregou o JS novo)
-  const BUILD_ID = "20260124fix1";
-  try { console.info("[VFM] build", BUILD_ID); } catch (_) {}
-
   /**
    * Vale Futebol Manager 2026 - Premium
    *
@@ -1306,7 +1302,6 @@
 
   function seasonFinalizeIfEnded(save) {
     ensureSeason(save);
-    // Importante: não chamar a si mesma aqui (isso causava "Maximum call stack size exceeded")
     ensureSeasonExtensions(save);
 
     const total = save.season.rounds.length;
@@ -1608,131 +1603,7 @@
     });
   }
 
-  
-/** Renderiza o corpo da tela de Competições (Liga / Copa do Brasil / Continental) */
-function renderCompetitionsBody(save, compView, league, tableRowsHtml) {
-  const view = (compView || 'LEAGUE').toUpperCase();
-
-  // Liga: renderiza a tabela já montada
-  if (view === 'LEAGUE') {
-    const rules = getLeagueQualificationRules(save.season?.leagueId || 'BRA_SERIE_A');
-    const legendParts = [];
-    if (rules?.libertadores?.length) legendParts.push(`<span class="badge">🟢 Libertadores: ${esc(rules.libertadores.join('–'))}º</span>`);
-    if (rules?.sudamericana?.length) legendParts.push(`<span class="badge">🟡 Sul-Americana: ${esc(rules.sudamericana.join('–'))}º</span>`);
-    if (rules?.relegation?.length) legendParts.push(`<span class="badge">🔴 Rebaixamento: ${esc(rules.relegation.join('–'))}º</span>`);
-
-    return `
-      <div class="row" style="gap:10px; flex-wrap:wrap; margin-bottom:10px">
-        ${legendParts.join('')}
-      </div>
-
-      <div style="overflow:auto; border:1px solid var(--line); border-radius:14px;">
-        <table style="width:100%; border-collapse:collapse; min-width:720px;">
-          <thead>
-            <tr style="background:rgba(255,255,255,.03)">
-              <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--line);">#</th>
-              <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--line);">Clube</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">J</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">V</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">E</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">D</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">GP</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">GC</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">SG</th>
-              <th class="right" style="text-align:right; padding:10px 12px; border-bottom:1px solid var(--line);">Pts</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRowsHtml}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  // Copa do Brasil (MVP): mostra próximos jogos e fase
-  if (view === 'CDB') {
-    const cdb = save.season?.ext?.cups?.CDB || save.season?.ext?.cup || null;
-    const stage = cdb?.stage || cdb?.roundName || 'Mata-mata';
-    const next = getNextCupMatches(save, 'CDB');
-    const list = (next && next.length)
-      ? next.map(m => matchItemFromObj(m, save)).join('')
-      : `<div class="notice">Nenhum jogo de Copa do Brasil disponível no momento.</div>`;
-
-    return `
-      <div class="card" style="margin:0; border-radius:16px;">
-        <div class="card-header">
-          <div>
-            <div class="card-title">Copa do Brasil</div>
-            <div class="card-subtitle">Fase atual: <b>${esc(stage)}</b></div>
-          </div>
-          <span class="badge">MVP</span>
-        </div>
-        <div class="card-body">
-          ${list}
-          <div class="sep"></div>
-          <div class="notice">Nesta versão, a Copa do Brasil aparece no calendário do seu clube e pode ser simulada. Detalhamento completo de chaves/eliminação entra na Parte 2.</div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Continental (Libertadores / Sul-Americana) — placeholder funcional
-  if (view === 'LIB' || view === 'SULA') {
-    const cont = save.season?.ext?.continental || null;
-    const name = cont?.name || (view === 'LIB' ? 'Libertadores' : 'Sul-Americana');
-    const next = getNextContinentalMatches(save);
-    const list = (next && next.length)
-      ? next.map(m => matchItemFromObj(m, save)).join('')
-      : `<div class="notice">Nenhum jogo continental disponível no momento.</div>`;
-
-    return `
-      <div class="card" style="margin:0; border-radius:16px;">
-        <div class="card-header">
-          <div>
-            <div class="card-title">${esc(name)}</div>
-            <div class="card-subtitle">Estrutura pronta • calendário integrado</div>
-          </div>
-          <span class="badge">MVP</span>
-        </div>
-        <div class="card-body">
-          ${list}
-          <div class="sep"></div>
-          <div class="notice">Nesta versão, o foco é a liga nacional. O módulo continental completo (fase de grupos/ligas e mata-mata) entra na Parte 2.</div>
-        </div>
-      </div>
-    `;
-  }
-
-  return `<div class="notice">Competição não suportada nesta versão.</div>`;
-}
-
-function getNextCupMatches(save, cupId) {
-  const all = save.season?.ext?.cupMatches || save.season?.ext?.matches || [];
-  return all.filter(m => (m.compId === cupId || m.cupId === cupId) && !m.played).slice(0, 6);
-}
-
-function getNextContinentalMatches(save) {
-  const all = save.season?.ext?.continentalMatches || save.season?.ext?.matches || [];
-  return all.filter(m => (m.compId === 'LIB' || m.compId === 'SULA' || m.continental) && !m.played).slice(0, 6);
-}
-
-function getLeagueQualificationRules(leagueId) {
-  // regras padrão (ajustáveis via /data/qualifications.json se existir no pack no futuro)
-  if (leagueId === 'BRA_SERIE_A') {
-    return {
-      libertadores: [1,2,3,4,5,6],
-      sudamericana: [7,8,9,10,11,12],
-      relegation: [17,18,19,20]
-    };
-  }
-  if (leagueId === 'BRA_SERIE_B') {
-    return { promotion: [1,2,3,4], relegation: [17,18,19,20] };
-  }
-  return null;
-}
-
-function viewCompetitions() {
+  function viewCompetitions() {
     return requireSave((save) => {
       ensureSystems(save);
       ensureSeason(save);
