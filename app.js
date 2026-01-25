@@ -1004,13 +1004,101 @@
     const rounds = generateDoubleRoundRobin(clubIds);
     const table = buildEmptyTable(clubs);
 
+    // Tenta extrair o ano a partir do id (ex.: 2025_2026)
+    const defaultId = (state.packData?.seasons?.seasons || []).find(s => s.default)?.id || '2025_2026';
+    const m = String(defaultId).match(/^(\d{4})[\-_](\d{4})$/);
+    const yearStart = m ? Number(m[1]) : 2025;
+    const yearEnd = m ? Number(m[2]) : (yearStart + 1);
+
     save.season = {
-      id: (state.packData?.seasons?.seasons || []).find(s => s.default)?.id || '2025_2026',
+      id: defaultId,
+      yearStart,
+      yearEnd,
       leagueId,
       currentRound: 0,
       rounds,
-      table
+      table,
+      completed: false,
+      summary: null
     };
+  }
+
+  // -----------------------------
+  // Fim de temporada (Parte 1)
+  // -----------------------------
+
+  function nextSeasonIdFrom(currentId, fallbackStart = 2025) {
+    const s = String(currentId || '');
+    const m = s.match(/^(\d{4})[\-_](\d{4})$/);
+    const ys = m ? Number(m[1]) + 1 : (fallbackStart + 1);
+    const ye = m ? Number(m[2]) + 1 : (ys + 1);
+    return { id: `${ys}_${ye}`, yearStart: ys, yearEnd: ye };
+  }
+
+  function finalizeSeasonIfNeeded(save) {
+    ensureSeason(save);
+    const rounds = save.season.rounds || [];
+    if (save.season.completed) return false;
+    if ((save.season.currentRound || 0) < rounds.length) return false;
+
+    const rows = sortTableRows(Object.values(save.season.table || {}));
+    const championId = rows[0]?.id || null;
+    const userPos = rows.findIndex(x => x.id === save.career.clubId) + 1;
+
+    save.season.completed = true;
+    save.season.completedAt = nowIso();
+    save.season.summary = {
+      championId,
+      championName: getClub(championId)?.name || championId,
+      userPos,
+      userPts: rows.find(x => x.id === save.career.clubId)?.Pts ?? null,
+      totalRounds: rounds.length
+    };
+
+    if (!save.progress) save.progress = {};
+    if (!Array.isArray(save.progress.seasons)) save.progress.seasons = [];
+    save.progress.seasons.push({
+      id: save.season.id,
+      yearStart: save.season.yearStart,
+      yearEnd: save.season.yearEnd,
+      leagueId: save.season.leagueId,
+      championId,
+      userClubId: save.career.clubId,
+      userPos,
+      finishedAt: save.season.completedAt
+    });
+
+    // Atualiza resumo do slot
+    const league = (state.packData?.competitions?.leagues || []).find(l => l.id === save.season.leagueId);
+    const club = getClub(save.career.clubId);
+    save.meta.summary = `Carreira • ${club?.name || 'Clube'} • ${league?.name || save.season.leagueId} • ${save.season.id}`;
+
+    return true;
+  }
+
+  function startNewSeason(save) {
+    ensureSystems(save);
+    ensureSeason(save);
+
+    // Avança ano/season id
+    const next = nextSeasonIdFrom(save.season.id, save.season.yearStart || 2025);
+    const leagueId = save.season.leagueId;
+    const clubs = (state.packData?.clubs?.clubs || []).filter(c => c.leagueId === leagueId);
+    const clubIds = clubs.map(c => c.id);
+
+    save.season = {
+      id: next.id,
+      yearStart: next.yearStart,
+      yearEnd: next.yearEnd,
+      leagueId,
+      currentRound: 0,
+      rounds: generateDoubleRoundRobin(clubIds),
+      table: buildEmptyTable(clubs),
+      completed: false,
+      summary: null
+    };
+
+    save.meta.updatedAt = nowIso();
   }
 
   function generateDoubleRoundRobin(teamIds) {
@@ -1221,7 +1309,35 @@
              <div class="card-header"><div><div class="card-title">Próxima Rodada ${Math.min(r + 1, totalRounds)}</div><div class="card-subtitle">Partidas agendadas</div></div></div>
              <div class="card-body"><div class="list">${nextRoundMatches.map(m => matchRow(m, 'Rodada ' + (r + 1) + '/' + totalRounds)).join('')}</div></div>
            </div>`
-        : `<div class="notice">Temporada encerrada.</div>`;
+        : (() => {
+            // Se chegamos no fim, fecha a temporada (caso ainda não tenha sido marcado)
+            finalizeSeasonIfNeeded(save);
+            const sum = save.season.summary;
+            if (!save.season.completed || !sum) {
+              return `<div class="notice">Temporada encerrada.</div>`;
+            }
+            const champClub = getClub(sum.championId);
+            const leagueName = (state.packData?.competitions?.leagues || []).find(l => l.id === save.season.leagueId)?.name || save.season.leagueId;
+            return `
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <div class="card-title">Fim da Temporada ${esc(save.season.id)}</div>
+                    <div class="card-subtitle">${esc(leagueName)} • Campeão: <b>${esc(champClub?.name || sum.championName || '')}</b></div>
+                  </div>
+                  <span class="badge">Sua posição: ${sum.userPos || '-'}</span>
+                </div>
+                <div class="card-body">
+                  <div class="row" style="align-items:center; gap:10px;">
+                    ${sum.championId ? clubLogoHtml(sum.championId, 40) : ''}
+                    <div class="small">Temporada concluída em ${esc(new Date(save.season.completedAt).toLocaleDateString('pt-BR'))}</div>
+                  </div>
+                  <div class="sep"></div>
+                  <button class="btn btn-primary" data-action="startNewSeason">Iniciar Nova Temporada</button>
+                </div>
+              </div>
+            `;
+          })();
 
       writeSlot(state.settings.activeSlotId, save);
 
@@ -1237,6 +1353,7 @@
           <div class="card-body">
             <div class="row">
               <button class="btn btn-primary" data-action="playNextRound" ${r >= totalRounds ? 'disabled' : ''}>Jogar Próxima Rodada</button>
+              ${r >= totalRounds ? `<button class="btn btn-primary" data-action="startNewSeason">Nova Temporada</button>` : ''}
               <button class="btn" data-go="/competitions">Ver Tabela</button>
               <button class="btn" data-go="/hub">Voltar</button>
             </div>
@@ -1896,7 +2013,26 @@
           save.finance.cash = Math.max(0, (save.finance.cash || 0) + sponsorIncome - weeklyCost);
 
           save.season.currentRound += 1;
+
+          // Se acabou a última rodada, fecha a temporada e gera resumo
+          finalizeSeasonIfNeeded(save);
+
           save.meta.updatedAt = nowIso();
+          writeSlot(state.settings.activeSlotId, save);
+          route();
+        });
+      }
+
+      if (action === 'startNewSeason') {
+        el.addEventListener('click', () => {
+          const save = activeSave();
+          if (!save) return;
+          ensureSystems(save);
+          ensureSeason(save);
+          // só permite se a temporada atual terminou
+          finalizeSeasonIfNeeded(save);
+          if (!save.season.completed) return;
+          startNewSeason(save);
           writeSlot(state.settings.activeSlotId, save);
           route();
         });
