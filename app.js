@@ -281,6 +281,7 @@
     "/staff": viewStaff,
     "/sponsorship": viewSponsorship,
     "/transfers": viewTransfers
+    ,"/diagnostics": viewDiagnostics
   };
 
   /** Navega para a rota atual conforme hash */
@@ -1039,6 +1040,9 @@
       completed: false,
       summary: null
     };
+
+    // Parte 3: inicia liga paralela (Brasil A/B) para termos classificação real ao longo do ano
+    try { ensureParallelBrazilLeaguesInitialized(save); } catch (e) {}
   }
 
   // -----------------------------
@@ -1058,6 +1062,9 @@
     const rounds = save.season.rounds || [];
     if (save.season.completed) return false;
     if ((save.season.currentRound || 0) < rounds.length) return false;
+
+    // Garante que ligas paralelas (Brasil A/B) tenham uma tabela final consistente
+    ensureParallelBrazilLeaguesFinalized(save);
 
     const rows = sortTableRows(Object.values(save.season.table || {}));
     const championId = rows[0]?.id || null;
@@ -1097,12 +1104,13 @@
       store[save.season.leagueId] = rows.map(r => ({ ...r }));
     } catch {}
 
-    // Promoção/Rebaixamento Brasil (A<->B) nesta atualização
+    // Promoção/Rebaixamento Brasil (A<->B)
     if (save.season.leagueId === 'BRA_SERIE_A' || save.season.leagueId === 'BRA_SERIE_B') {
       applyBrazilPromotionRelegation(save);
     }
 
-
+    return true;
+  }
 
   // -----------------------------
   // Promoção/Rebaixamento + Zonas (Parte 2)
@@ -1155,6 +1163,91 @@
     const sid = save.season?.id || 'unknown';
     if (!save.progress.leagueTables[sid]) save.progress.leagueTables[sid] = {};
     return save.progress.leagueTables[sid];
+  }
+
+  // -----------------------------
+  // Ligas paralelas (Parte 3)
+  // -----------------------------
+
+  function ensureParallelLeaguesStore(save) {
+    if (!save.progress) save.progress = {};
+    if (!save.progress.parallelLeagues) save.progress.parallelLeagues = {};
+    const sid = save.season?.id || 'unknown';
+    if (!save.progress.parallelLeagues[sid]) save.progress.parallelLeagues[sid] = {};
+    return save.progress.parallelLeagues[sid];
+  }
+
+  function ensureParallelLeagueState(save, leagueId) {
+    const store = ensureParallelLeaguesStore(save);
+    if (store[leagueId]) return store[leagueId];
+
+    const clubs = ((save.world?.clubs) || (state.packData?.clubs?.clubs) || []).filter(c => c.leagueId === leagueId);
+    const ids = clubs.map(c => c.id);
+    const stateLeague = {
+      leagueId,
+      currentRound: 0,
+      rounds: generateDoubleRoundRobin(ids),
+      table: buildEmptyTable(clubs),
+      completed: false
+    };
+    store[leagueId] = stateLeague;
+    return stateLeague;
+  }
+
+  function simulateParallelRound(save, leagueId, roundIndex) {
+    const ls = ensureParallelLeagueState(save, leagueId);
+    if (ls.completed) return;
+    if (!Array.isArray(ls.rounds) || !ls.table) return;
+    const r = Number.isFinite(roundIndex) ? roundIndex : ls.currentRound;
+    if (r < 0 || r >= ls.rounds.length) {
+      ls.completed = true;
+      return;
+    }
+    const matches = ls.rounds[r] || [];
+    for (const m of matches) {
+      if (m.played) continue;
+      const sim = simulateMatch(m.homeId, m.awayId, save);
+      m.hg = sim.hg; m.ag = sim.ag; m.played = true;
+      applyResultToTable(ls.table, m.homeId, m.awayId, m.hg, m.ag);
+    }
+    ls.currentRound = Math.max(ls.currentRound, r + 1);
+    if (ls.currentRound >= ls.rounds.length) ls.completed = true;
+  }
+
+  function snapshotParallelLeagueToTables(save, leagueId) {
+    try {
+      const ls = ensureParallelLeagueState(save, leagueId);
+      const rows = sortTableRows(Object.values(ls.table || {}));
+      const tables = ensureLeagueTableStore(save);
+      tables[leagueId] = rows.map(r => ({ ...r }));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function otherBrazilLeague(leagueId) {
+    if (leagueId === 'BRA_SERIE_A') return 'BRA_SERIE_B';
+    if (leagueId === 'BRA_SERIE_B') return 'BRA_SERIE_A';
+    return null;
+  }
+
+  function ensureParallelBrazilLeaguesFinalized(save) {
+    const other = otherBrazilLeague(save.season?.leagueId);
+    if (!other) return;
+    const ls = ensureParallelLeagueState(save, other);
+    // Se o usuário terminou a liga dele, garante que a outra liga também finalize (fast-forward)
+    while (!ls.completed) {
+      simulateParallelRound(save, other, ls.currentRound);
+      // Evita loop infinito em caso de dados ruins
+      if (ls.currentRound > 200) break;
+    }
+    snapshotParallelLeagueToTables(save, other);
+  }
+
+  function ensureParallelBrazilLeaguesInitialized(save) {
+    const other = otherBrazilLeague(save.season?.leagueId);
+    if (!other) return;
+    ensureParallelLeagueState(save, other);
   }
 
   function simulateLeagueSeason(save, leagueId) {
@@ -1238,8 +1331,7 @@
       promotedFromB: promovidos
     });
   }
-    return true;
-  }
+
 
   function startNewSeason(save) {
     ensureSystems(save);
@@ -1262,6 +1354,9 @@
       completed: false,
       summary: null
     };
+
+    // Parte 3: reinicia liga paralela do Brasil (A/B) na nova temporada
+    try { ensureParallelBrazilLeaguesInitialized(save); } catch (e) {}
 
     save.meta.updatedAt = nowIso();
   }
@@ -1840,16 +1935,48 @@
 
   /** Admin placeholder */
   function viewAdmin() {
+    const hasDiag = typeof window !== 'undefined' && !!window.VFM_DIAG;
     return `
       <div class="card">
         <div class="card-header"><div class="card-title">Admin</div></div>
         <div class="card-body">
-          <div class="notice">Painel de administração será implementado em versões futuras.</div>
+          <div class="notice">Painel de administração (Parte 3). Ferramentas extras para depuração e manutenção.</div>
           <div class="sep"></div>
-          <button class="btn btn-primary" data-go="/home">Menu</button>
+          ${hasDiag ? '<button class="btn btn-primary" data-go="/diagnostics">Diagnósticos</button>' : ''}
+          <button class="btn btn-ghost" data-go="/home">Menu</button>
         </div>
       </div>
     `;
+  }
+
+  function viewDiagnostics() {
+    const hasDiag = typeof window !== 'undefined' && !!window.VFM_DIAG;
+    if (!hasDiag) {
+      return `
+        <div class="card">
+          <div class="card-header"><div class="card-title">Diagnósticos</div></div>
+          <div class="card-body">
+            <div class="notice">Sistema de diagnósticos não carregou. Verifique se <b>js/diagnostics.js</b> está publicado.</div>
+            <div class="sep"></div>
+            <button class="btn btn-primary" data-go="/home">Menu</button>
+          </div>
+        </div>
+      `;
+    }
+    try {
+      return window.VFM_DIAG.renderHtml();
+    } catch (e) {
+      return `
+        <div class="card">
+          <div class="card-header"><div class="card-title">Diagnósticos</div></div>
+          <div class="card-body">
+            <div class="notice">Falha ao renderizar relatório: ${esc(e?.message || e)}</div>
+            <div class="sep"></div>
+            <button class="btn btn-primary" data-go="/home">Menu</button>
+          </div>
+        </div>
+      `;
+    }
   }
 
   /** Liga eventos interativos após renderização */
@@ -1864,6 +1991,34 @@
     // Ações
     document.querySelectorAll('[data-action]').forEach((el) => {
       const action = el.getAttribute('data-action');
+
+      // --- Diagnósticos (provisório)
+      if (action === 'diagCopy') {
+        el.addEventListener('click', () => {
+          try {
+            const ok = (typeof window !== 'undefined' && window.__vfmDiagCopy) ? window.__vfmDiagCopy() : false;
+            // Feedback simples
+            if (ok) alert('Relatório copiado! Cole no WhatsApp/Email e envie.');
+            else alert('Não foi possível copiar automaticamente. Abra em outro navegador ou use Print/Compartilhar.');
+          } catch (e) {
+            alert('Falha ao copiar relatório.');
+          }
+        });
+        return;
+      }
+
+      if (action === 'diagClear') {
+        el.addEventListener('click', () => {
+          try {
+            if (typeof window !== 'undefined' && window.VFM_DIAG && window.VFM_DIAG.clear) {
+              window.VFM_DIAG.clear();
+            }
+          } catch (e) {}
+          route();
+        });
+        return;
+      }
+
       if (action === 'selectPack') {
         el.addEventListener('click', async () => {
           const packId = el.getAttribute('data-pack');
@@ -2169,6 +2324,15 @@
             m.xgA = sim.lamAway;
             applyResultToTable(save.season.table, m.homeId, m.awayId, m.hg, m.ag);
           });
+
+          // Parte 3: Simula a liga paralela (Brasil A/B) na mesma rodada, para termos uma tabela real no fim
+          try {
+            const other = otherBrazilLeague(save.season.leagueId);
+            if (other) {
+              simulateParallelRound(save, other, r);
+              snapshotParallelLeagueToTables(save, other);
+            }
+          } catch (e) {}
 
           // Guarda o resumo da rodada jogada (para exibir resultados)
           save.season.lastRoundPlayed = r;
